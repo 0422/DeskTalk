@@ -28,4 +28,8 @@ void eye_surprise();
 void eye_right();  
 void eye_left();  
 
+// 增加codex额度显示
+void show_text(const char* text);
+void show_text_scroll(const char* text, int delay_ms = 50);
+
 #endif

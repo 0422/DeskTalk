@@ -45,6 +45,16 @@ void handle_cmd() {
     cmd.trim();
   }
 
+  // 解析 JSON 命令
+  // 假设命令格式: {"actions": ["show_text,剩余50%"]}
+  // 或者直接: show_text,剩余50%
+  // 增加codex额度显示
+  if (cmd.startsWith("show_text,")) {
+      String text = cmd.substring(10);
+      show_text(text.c_str());
+      return;
+  }
+
   if (!cmd.isEmpty()) {
     last_time = millis();
     StaticJsonDocument<1024> doc;

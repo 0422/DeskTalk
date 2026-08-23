@@ -1,6 +1,10 @@
 #include "emoji.h"
 #include "animation.h"
 
+// 增加codex额度显示
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 // Adjustable
 const int ref_eye_height = 40;
 const int ref_eye_width = 40;
@@ -295,4 +299,52 @@ void eye_right() {
 
 void eye_left() {
   move_eye(-1);
+}
+
+// 增加codex额度显示
+// 2026-08-21 修改：字号改大（size 2，超宽则回退size 1）并居中显示；显示3秒后自动恢复默认表情，
+// 避免PC端紧接着发送的表情/动画命令把文字瞬间覆盖掉（之前表现为“一闪而过”）
+void show_text(const char* text) {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.setTextSize(2);
+    display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    if (w > SCREEN_WIDTH - 4) {
+        display.setTextSize(1);
+        display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    }
+
+    int16_t cursor_x = (SCREEN_WIDTH - w) / 2 - x1;
+    int16_t cursor_y = (SCREEN_HEIGHT - h) / 2 - y1;
+    display.setCursor(cursor_x, cursor_y);
+    display.print(text);
+    display.display();
+
+    delay(3000);
+    eye_center(true);
+}
+
+void show_text_scroll(const char* text, int delay_ms) {
+    int text_width = strlen(text) * 6; // 每个字符约6像素宽
+    int screen_width = SCREEN_WIDTH;
+    
+    // 如果文字比屏幕短，直接显示
+    if (text_width < screen_width) {
+        show_text(text);
+        return;
+    }
+    
+    // 滚动显示
+    for (int offset = 0; offset < text_width - screen_width + 1; offset++) {
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(-offset, 0);
+        display.println(text);
+        display.display();
+        delay(delay_ms);
+    }
 }
