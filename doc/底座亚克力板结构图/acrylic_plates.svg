@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 116.0 182.0" width="464.0px" height="728.0px" font-family="Arial, sans-serif">
+<style>
+        .bg { fill: #ffffff; }
+        .title { font: bold 6px sans-serif; fill: #0f172a; }
+        .subtitle { font: bold 4px sans-serif; fill: #1e293b; }
+        .body { font: 3.4px sans-serif; fill: #334155; }
+        .dim-text { font: 3.2px sans-serif; fill: #1d4ed8; font-weight: 600; }
+        .plate-fill { fill: #f1f5f9; stroke: #1e40af; stroke-width: 0.25; }
+        .hole-blue { fill: #3b82f6; stroke: #1d4ed8; stroke-width: 0.15; }
+        .hole-orange { fill: #fb923c; stroke: #c2410c; stroke-width: 0.15; }
+        .dim-line { stroke: #1d4ed8; stroke-width: 0.2; fill: none; }
+        .dim-arrow { fill: #1d4ed8; stroke: none; }
+        .dim-ext { stroke: #1d4ed8; stroke-width: 0.15; fill: none; }
+        .center-line { stroke: #94a3b8; stroke-width: 0.15;
+                        stroke-dasharray: 1.5 0.8; fill: none; }
+        .legend-color { stroke-width: 0.15; }
+    </style>
+<rect class="bg" x="0" y="0" width="116.0" height="182.0" />
+<text x="18" y="8" class="title">Acrylic Plate CAD Layout · 亚克力板结构图</text>
+<text x="18" y="14" class="body">Unit: mm (1:1) · Material: 透明亚克力 · Thickness: 3.0 mm</text>
+<g transform="translate(18,18)">
+<g class="plate-group">
+<rect x="0" y="0" width="80.0" height="55.0" class="plate-fill" rx="0.5" />
+<line x1="40.0" y1="-2" x2="40.0" y2="57.0" class="center-line" />
+<line x1="-2" y1="27.5" x2="82.0" y2="27.5" class="center-line" />
+<circle cx="11.425" cy="13.53" r="1.1" class="hole-blue" />
+<circle cx="68.575" cy="13.53" r="1.1" class="hole-blue" />
+<circle cx="11.425" cy="41.47" r="1.1" class="hole-blue" />
+<circle cx="68.575" cy="41.47" r="1.1" class="hole-blue" />
+<circle cx="3.0" cy="3.0" r="1.6" class="hole-orange" />
+<circle cx="77.0" cy="3.0" r="1.6" class="hole-orange" />
+<circle cx="3.0" cy="52.0" r="1.6" class="hole-orange" />
+<circle cx="77.0" cy="52.0" r="1.6" class="hole-orange" />
+<line class="dim-line" x1="0" y1="61.0" x2="80.0" y2="61.0" />
+<polygon class="dim-arrow" points="0,61.0 2,60.1 2,61.9" />
+<polygon class="dim-arrow" points="80.0,61.0 78.0,60.1 78.0,61.9" />
+<line class="dim-ext" x1="0" y1="59.5" x2="0" y2="63.0" />
+<line class="dim-ext" x1="80.0" y1="59.5" x2="80.0" y2="63.0" />
+<text x="40.0" y="63.5" class="dim-text" text-anchor="top">80.00</text>
+<line class="dim-line" x1="-6" y1="0" x2="-6" y2="55.0" />
+<polygon class="dim-arrow" points="-6,0 -6.9,2 -5.1,2" />
+<polygon class="dim-arrow" points="-6,55.0 -6.9,53.0 -5.1,53.0" />
+<line class="dim-ext" x1="-8" y1="0" x2="-4.5" y2="0" />
+<line class="dim-ext" x1="-8" y1="55.0" x2="-4.5" y2="55.0" />
+<text x="-7" y="27.5" class="dim-text" text-anchor="end" transform="rotate(-90 -7 27.5)">55.00</text>
+<line class="dim-line" x1="11.425" y1="52.0" x2="68.575" y2="52.0" />
+<polygon class="dim-arrow" points="11.425,52.0 13.425,51.1 13.425,52.9" />
+<polygon class="dim-arrow" points="68.575,52.0 66.575,51.1 66.575,52.9" />
+<line class="dim-ext" x1="11.425" y1="50.5" x2="11.425" y2="54.0" />
+<line class="dim-ext" x1="68.575" y1="50.5" x2="68.575" y2="54.0" />
+<text x="40.0" y="51.0" class="dim-text" text-anchor="bottom">57.15</text>
+<line class="dim-line" x1="11.425" y1="52.0" x2="11.425" y2="54.0" />
+<line class="dim-line" x1="68.575" y1="52.0" x2="68.575" y2="54.0" />
+<line class="dim-line" x1="77.0" y1="13.53" x2="77.0" y2="41.47" />
+<polygon class="dim-arrow" points="77.0,13.53 76.1,15.53 77.9,15.53" />
+<polygon class="dim-arrow" points="77.0,41.47 76.1,39.47 77.9,39.47" />
+<line class="dim-ext" x1="75.0" y1="13.53" x2="78.5" y2="13.53" />
+<line class="dim-ext" x1="75.0" y1="41.47" x2="78.5" y2="41.47" />
+<text x="77.8" y="27.5" class="dim-text" text-anchor="start" transform="rotate(-90 77.8 27.5)">27.94</text>
+<line class="dim-line" x1="77.0" y1="13.53" x2="75.0" y2="13.53" />
+<line class="dim-line" x1="77.0" y1="41.47" x2="75.0" y2="41.47" />
+<text x="40.0" y="-9" class="subtitle" text-anchor="middle">Top Plate / 上板 - 80.0 × 55.0 mm</text>
+</g>
+</g>
+<g transform="translate(18,101.0)">
+<g class="plate-group">
+<rect x="0" y="0" width="80.0" height="55.0" class="plate-fill" rx="0.5" />
+<line x1="40.0" y1="-2" x2="40.0" y2="57.0" class="center-line" />
+<line x1="-2" y1="27.5" x2="82.0" y2="27.5" class="center-line" />
+<circle cx="17.84" cy="16.5" r="1.1" class="hole-blue" />
+<circle cx="62.16" cy="16.5" r="1.1" class="hole-blue" />
+<circle cx="17.84" cy="38.5" r="1.1" class="hole-blue" />
+<circle cx="62.16" cy="38.5" r="1.1" class="hole-blue" />
+<circle cx="3.0" cy="3.0" r="1.6" class="hole-orange" />
+<circle cx="77.0" cy="3.0" r="1.6" class="hole-orange" />
+<circle cx="3.0" cy="52.0" r="1.6" class="hole-orange" />
+<circle cx="77.0" cy="52.0" r="1.6" class="hole-orange" />
+<line class="dim-line" x1="0" y1="61.0" x2="80.0" y2="61.0" />
+<polygon class="dim-arrow" points="0,61.0 2,60.1 2,61.9" />
+<polygon class="dim-arrow" points="80.0,61.0 78.0,60.1 78.0,61.9" />
+<line class="dim-ext" x1="0" y1="59.5" x2="0" y2="63.0" />
+<line class="dim-ext" x1="80.0" y1="59.5" x2="80.0" y2="63.0" />
+<text x="40.0" y="63.5" class="dim-text" text-anchor="top">80.00</text>
+<line class="dim-line" x1="-6" y1="0" x2="-6" y2="55.0" />
+<polygon class="dim-arrow" points="-6,0 -6.9,2 -5.1,2" />
+<polygon class="dim-arrow" points="-6,55.0 -6.9,53.0 -5.1,53.0" />
+<line class="dim-ext" x1="-8" y1="0" x2="-4.5" y2="0" />
+<line class="dim-ext" x1="-8" y1="55.0" x2="-4.5" y2="55.0" />
+<text x="-7" y="27.5" class="dim-text" text-anchor="end" transform="rotate(-90 -7 27.5)">55.00</text>
+<line class="dim-line" x1="17.84" y1="52.0" x2="62.16" y2="52.0" />
+<polygon class="dim-arrow" points="17.84,52.0 19.84,51.1 19.84,52.9" />
+<polygon class="dim-arrow" points="62.16,52.0 60.16,51.1 60.16,52.9" />
+<line class="dim-ext" x1="17.84" y1="50.5" x2="17.84" y2="54.0" />
+<line class="dim-ext" x1="62.16" y1="50.5" x2="62.16" y2="54.0" />
+<text x="40.0" y="51.0" class="dim-text" text-anchor="bottom">44.32</text>
+<line class="dim-line" x1="17.84" y1="52.0" x2="17.84" y2="54.0" />
+<line class="dim-line" x1="62.16" y1="52.0" x2="62.16" y2="54.0" />
+<line class="dim-line" x1="77.0" y1="16.5" x2="77.0" y2="38.5" />
+<polygon class="dim-arrow" points="77.0,16.5 76.1,18.5 77.9,18.5" />
+<polygon class="dim-arrow" points="77.0,38.5 76.1,36.5 77.9,36.5" />
+<line class="dim-ext" x1="75.0" y1="16.5" x2="78.5" y2="16.5" />
+<line class="dim-ext" x1="75.0" y1="38.5" x2="78.5" y2="38.5" />
+<text x="77.8" y="27.5" class="dim-text" text-anchor="start" transform="rotate(-90 77.8 27.5)">22.00</text>
+<line class="dim-line" x1="77.0" y1="16.5" x2="75.0" y2="16.5" />
+<line class="dim-line" x1="77.0" y1="38.5" x2="75.0" y2="38.5" />
+<text x="40.0" y="-9" class="subtitle" text-anchor="middle">Bottom Plate / 下板 - 80.0 × 55.0 mm</text>
+</g>
+</g>
+<text x="18" y="164.0" class="subtitle">图例 Legend</text>
+<circle cx="21" cy="169.0" r="1.1" class="hole-blue legend-color" />
+<text x="25" y="170.0" class="body">内孔 Ø2.2 mm (M2 螺丝孔 · M2 Screw)</text>
+<circle cx="68" cy="169.0" r="1.6" class="hole-orange legend-color" />
+<text x="72" y="170.0" class="body">外角孔 Ø3.2 mm (六角铜柱 · Hex standoff)</text>
+<line class="dim-line" x1="126" y1="169.0" x2="136" y2="169.0" />
+<polygon class="dim-arrow" points="126,169.0 128,168.1 128,169.9" />
+<polygon class="dim-arrow" points="136,169.0 134,168.1 134,169.9" />
+<text x="138" y="170.0" class="body">尺寸标注 Dimension (mm)</text>
+<text x="18" y="177.0" class="body">· Top plate 内孔: 安装云台底座 (Gimbal Base Mount)</text>
+<text x="18" y="182.0" class="body">· Bottom plate 内孔: 安装 ESP32 控制板 (Controller Board)</text>
+<text x="18" y="187.0" class="body">· 外角孔上下对位, 通过 4 颗六角铜柱 + M3 长/短螺丝锁紧上下板间距.</text>
+</svg>
