@@ -1,0 +1,2 @@
+# 2026-09-18: One async HTTP/WebSocket dependency for the optional cloud LLM-to-TTS pipeline.
+aiohttp>=3.10,<4

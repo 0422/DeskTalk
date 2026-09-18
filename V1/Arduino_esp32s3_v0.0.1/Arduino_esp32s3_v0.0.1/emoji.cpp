@@ -316,6 +316,36 @@ void eye_left() {
   move_eye(-1);
 }
 
+// 2026-09-18: Frame the existing eyes with compact ear shapes to acknowledge active ASR without an animation delay.
+void eye_listening() {
+  if (!oled_is_ready()) {
+    return;
+  }
+  eye_center(false);
+  draw_eyes(false);
+  oled.drawRoundRect(3, 21, 15, 27, 7, SSD1306_WHITE);
+  oled.drawRoundRect(110, 21, 15, 27, 7, SSD1306_WHITE);
+  oled.drawFastVLine(11, 29, 11, SSD1306_WHITE);
+  oled.drawFastVLine(116, 29, 11, SSD1306_WHITE);
+  oled.display();
+}
+
+// 2026-09-18: Show an upward, asymmetric gaze while ASR finalization and cloud response are pending.
+void eye_thinking() {
+  if (!oled_is_ready()) {
+    return;
+  }
+  eye_center(false);
+  left_eye_y -= 5;
+  right_eye_y += 4;
+  right_eye_height = 24;
+  draw_eyes(false);
+  oled.fillCircle(83, 8, 2, SSD1306_WHITE);
+  oled.fillCircle(96, 11, 3, SSD1306_WHITE);
+  oled.fillCircle(109, 8, 2, SSD1306_WHITE);
+  oled.display();
+}
+
 void emoji_init() {
   // 2026-09-11: Do not run the startup animation without an initialized OLED.
   if (!oled_is_ready()) {

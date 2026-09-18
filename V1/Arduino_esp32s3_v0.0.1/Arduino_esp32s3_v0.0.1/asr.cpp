@@ -4,6 +4,8 @@
 #include <new>
 
 #include "volc_speech_protocol.h"
+// 2026-09-17: Record serial-only latency milestones for the V1 conversation baseline.
+#include "latency_trace.h"
 
 namespace {
 
@@ -237,6 +239,8 @@ bool AsrClient::sendAudioRequest(const uint8_t *data, size_t length,
 }
 
 bool AsrClient::ASR() {
+  // 2026-09-17: Start one isolated latency session for every cloud ASR turn.
+  latency_trace_begin();
   asr_result = "";
   message_received = false;
   final_response_received = false;
@@ -272,6 +276,8 @@ bool AsrClient::ASR() {
   unsigned long silence_started_at = 0;
   bool is_silent = false;
   bool speech_started = false;
+  // 2026-09-17: Track the local amplitude threshold independently from cloud partial-result speech detection.
+  bool vad_marked = false;
   size_t max_mean = 0;
   bool sent_last_frame = false;
 
@@ -293,6 +299,11 @@ bool AsrClient::ASR() {
 
     bool is_last = samples_recorded + samples_to_read >= samples_needed;
     if (mean > SOUND_THRESHOLD) {
+      // 2026-09-17: Timestamp the first audio block that crosses the firmware's current VAD threshold.
+      if (!vad_marked) {
+        vad_marked = true;
+        latency_trace_mark(LatencyEvent::VAD_START);
+      }
       if (!speech_started) {
         speech_started = true;
         log_info("Speech detected by microphone");
@@ -305,12 +316,17 @@ bool AsrClient::ASR() {
       if (!is_silent) {
         is_silent = true;
         silence_started_at = millis();
+      // } else if (speech_started &&
+      //            millis() - silence_started_at >=
+      //                MAX_SILENCE_TIME * 1000UL) {
+      // 2026-09-17: Use a millisecond endpoint threshold so the baseline can be tuned below whole seconds.
       } else if (speech_started &&
-                 millis() - silence_started_at >=
-                     MAX_SILENCE_TIME * 1000UL) {
+                 millis() - silence_started_at >= MAX_SILENCE_TIME_MS) {
         is_last = true;
-        log_info("End of speech detected after %d seconds of silence",
-                 MAX_SILENCE_TIME);
+        // log_info("End of speech detected after %d seconds of silence",
+        //          MAX_SILENCE_TIME);
+        log_info("End of speech detected after %lu ms of silence",
+                 static_cast<unsigned long>(MAX_SILENCE_TIME_MS));
       } else if (!speech_started &&
                  samples_recorded + samples_to_read >=
                      SAMPLE_RATE * START_SPEECH_TIMEOUT) {
@@ -325,6 +341,10 @@ bool AsrClient::ASR() {
                           samples_to_read * sizeof(int16_t), is_last)) {
       request_failed = true;
       break;
+    }
+    // 2026-09-17: Treat successful submission of the last WebSocket audio frame as terminal upload completion.
+    if (is_last) {
+      latency_trace_mark(LatencyEvent::AUDIO_UPLOAD_DONE);
     }
     samples_recorded += samples_to_read;
 
@@ -438,6 +458,8 @@ bool AsrClient::parseResponse(const uint8_t *frame, size_t length) {
 
   if ((flags & kFlagLast) != 0 || response_sequence < 0) {
     final_response_received = true;
+    // 2026-09-17: Mark the final ASR result after its response payload has been parsed.
+    latency_trace_mark(LatencyEvent::ASR_FINAL);
     log_info("ASR 2.0 final result: %s", asr_result.c_str());
   }
   return true;

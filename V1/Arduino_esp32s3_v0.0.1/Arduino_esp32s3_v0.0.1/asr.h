@@ -9,7 +9,13 @@
 #include "common.h"
 
 #define RECORD_TIME 30
-#define MAX_SILENCE_TIME 2
+// #define MAX_SILENCE_TIME 2
+// 2026-09-17: Reduce the fixed endpoint wait while retaining enough pause tolerance for short spoken commands.
+// #define MAX_SILENCE_TIME_MS 1200UL
+// 2026-09-17: Shorten the requested VAD endpoint wait for faster command-response latency.
+// #define MAX_SILENCE_TIME_MS 900UL
+// 2026-09-18: Start with a 650 ms endpoint to reduce perceived turn-taking delay while retaining several 200 ms audio blocks of pause tolerance.
+#define MAX_SILENCE_TIME_MS 650UL
 #define START_SPEECH_TIMEOUT 15
 #define BUFFER_SIZE (SAMPLE_RATE / 5)
 

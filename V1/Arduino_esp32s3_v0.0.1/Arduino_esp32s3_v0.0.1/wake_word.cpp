@@ -6,6 +6,8 @@
 #include <driver/i2s.h>
 #endif
 #include <esp32-hal-sr.h>
+// 2026-09-17: Do not subscribe ESP-SR inference tasks to the 5-second task watchdog; a valid AFE pass or an intentional pause can exceed it.
+// #include <esp_task_wdt.h>
 
 #include "audio.h"
 #include "common.h"
@@ -26,6 +28,35 @@ static const sr_cmd_t wake_word_commands[] = {
   {WAKE_COMMAND_ID, "Hi Della", "hi DfLc"},
 };
 
+// 2026-09-17: Arduino-ESP32 3.0.0 creates these ESP-SR tasks without subscribing them, while the underlying speech model calls esp_task_wdt_reset().
+#if 0
+static bool register_sr_watchdog_task(const char *task_name) {
+  TaskHandle_t task = xTaskGetHandle(task_name);
+  if (task == nullptr) {
+    log_error("ESP-SR watchdog task was not found: %s", task_name);
+    return false;
+  }
+
+  const esp_err_t status = esp_task_wdt_status(task);
+  if (status == ESP_OK) {
+    return true;
+  }
+  if (status != ESP_ERR_NOT_FOUND) {
+    log_error("ESP-SR watchdog status failed for %s: %s", task_name,
+              esp_err_to_name(status));
+    return false;
+  }
+
+  const esp_err_t result = esp_task_wdt_add(task);
+  if (result != ESP_OK) {
+    log_error("ESP-SR watchdog registration failed for %s: %s", task_name,
+              esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+#endif
+
 // 2026-09-11: Feed ESP-SR from the already configured I2S_NUM_0 driver so no second driver claims the microphone pins.
 static esp_err_t fill_wake_word_audio(void *arg, void *out, size_t len,
                                       size_t *bytes_read, uint32_t timeout_ms) {
@@ -37,7 +68,11 @@ static esp_err_t fill_wake_word_audio(void *arg, void *out, size_t len,
                                  : pdMS_TO_TICKS(timeout_ms);
   return i2s_read(I2S_NUM_0, out, len, bytes_read, timeout_ticks);
 #endif
-  return read_audio_bytes(out, len, bytes_read, timeout_ms);
+  // return read_audio_bytes(out, len, bytes_read, timeout_ms);
+  // 2026-09-17: Yield after each shared-I2S read so Core 0's idle task can run while ESP-SR inference occupies Core 1.
+  const esp_err_t result = read_audio_bytes(out, len, bytes_read, timeout_ms);
+  vTaskDelay(1);
+  return result;
 }
 
 // 2026-09-11: Defer the conversation state change to loop() after WakeNet detects the phrase on mono input or verifies a stereo channel.
@@ -114,6 +149,17 @@ bool setup_wake_word() {
     log_error("Wake phrase initialization failed: %s", esp_err_to_name(result));
     return false;
   }
+
+  // 2026-09-17: Stop ESP-IDF from emitting "task not found" for every watchdog reset performed by the ESP-SR model.
+  // 2026-09-17: Keep the former registration disabled because AFE inference and sr_pause() can legitimately prevent this task from feeding within five seconds.
+  // const bool feed_watchdog_ready =
+  //     register_sr_watchdog_task("SR Feed Task");
+  // 2026-09-17: Do not register SR Detect Task; its neural-network inference can run longer than the 5-second watchdog window.
+  // const bool detect_watchdog_ready =
+  //     register_sr_watchdog_task("SR Detect Task");
+  // if (!feed_watchdog_ready) {
+  //   log_warn("ESP-SR started without complete watchdog registration");
+  // }
 
   wake_word_ready = true;
   log_info("Wake phrases are Ready. Say: Hi ESP or Hi Della");

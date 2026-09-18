@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>desk-talk 整机 3D 预览</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0e1116; }
+  body { font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif; color:#e6e9ef; }
+  #app { position:absolute; inset:0; }
+  #ui {
+    position:absolute; top:16px; left:16px; width:236px;
+    background:rgba(20,25,33,0.86); border:1px solid rgba(255,255,255,0.10);
+    border-radius:12px; padding:14px 14px 10px; backdrop-filter:blur(8px);
+  }
+  #ui h1 { margin:0 0 2px; font-size:14px; font-weight:500; letter-spacing:0.02em; }
+  #ui .sub { font-size:11px; color:#8b94a3; margin-bottom:12px; }
+  .row { margin-bottom:11px; }
+  .row .lab { display:flex; justify-content:space-between; font-size:12px; color:#aab2c0; margin-bottom:5px; }
+  .row .lab b { color:#e6e9ef; font-weight:500; font-variant-numeric:tabular-nums; }
+  input[type=range] {
+    -webkit-appearance:none; appearance:none; width:100%; height:3px; border-radius:3px;
+    background:#33404f; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#5aa9e6; cursor:pointer; border:2px solid #0e1116;
+  }
+  input[type=range]::-moz-range-thumb {
+    width:11px; height:11px; border-radius:50%; background:#5aa9e6; cursor:pointer; border:2px solid #0e1116;
+  }
+  .btns { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:12px; }
+  button {
+    font-family:inherit; font-size:12px; color:#cfd6e0; padding:7px 6px; cursor:pointer;
+    background:#212a36; border:1px solid rgba(255,255,255,0.10); border-radius:8px;
+  }
+  button:hover { background:#2b3646; }
+  button.on { background:#1d4f75; border-color:#3d8fc4; color:#eaf4ff; }
+  #tip { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:#6b7480; background:rgba(20,25,33,0.8);
+    padding:6px 14px; border-radius:20px; border:1px solid rgba(255,255,255,0.07); }
+  #err { position:absolute; inset:0; display:none; place-items:center; text-align:center; padding:40px; font-size:13px; color:#e08a8a; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="ui">
+  <h1>desk-talk 整机 3D 预览</h1>
+  <div class="sub">99 × 78 × 44mm · 层间距 36mm · 四角铜柱 · 单左侧板嵌喇叭 · 前后开放</div>
+
+  <div class="row">
+    <div class="lab"><span>云台偏航</span><b id="vYaw">0°</b></div>
+    <input type="range" id="yaw" min="-80" max="80" step="1" value="0">
+  </div>
+  <div class="row">
+    <div class="lab"><span>云台俯仰</span><b id="vPitch">0°</b></div>
+    <input type="range" id="pitch" min="-25" max="70" step="1" value="0">
+  </div>
+  <div class="row">
+    <div class="lab"><span>爆炸视图</span><b id="vExp">0%</b></div>
+    <input type="range" id="exp" min="0" max="100" step="1" value="0">
+  </div>
+
+  <div class="btns">
+    <button id="btnCut">揭顶</button>
+    <button id="btnSpin">自动旋转</button>
+    <button id="btnLab" class="on">标签</button>
+    <button id="btnReset">重置视角</button>
+  </div>
+</div>
+
+<div id="tip">左键拖拽旋转 · 滚轮缩放 · 右键平移</div>
+<div id="err">3D 资源加载失败，请检查网络后刷新。</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e1116);
+scene.fog = new THREE.Fog(0x0e1116, 700, 1500);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 4000);
+camera.position.set(-250, 215, 330);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 62, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 90;
+controls.maxDistance = 900;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0xbcd2ff, 0x12161c, 1.05));
+
+const key = new THREE.DirectionalLight(0xffffff, 2.0);
+key.position.set(180, 320, 220);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 50;
+key.shadow.camera.far = 900;
+const S = 260;
+Object.assign(key.shadow.camera, { left: -S, right: S, top: S, bottom: -S });
+key.shadow.camera.updateProjectionMatrix();
+key.shadow.bias = -0.0012;
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0x7fa8d8, 0.75);
+fill.position.set(-220, 120, -180);
+scene.add(fill);
+
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(760, 64),
+  new THREE.MeshStandardMaterial({ color: 0x151a21, roughness: 0.95, metalness: 0 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.4;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const grid = new THREE.GridHelper(1200, 48, 0x2b3644, 0x1c242e);
+grid.position.y = 0;
+scene.add(grid);
+
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x05080c, transparent: true, opacity: 0.55 });
+
+function box(w, h, d, mat, pos, parent, withEdges = true) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(pos[0], pos[1], pos[2]);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  if (withEdges) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat));
+  (parent || scene).add(m);
+  return m;
+}
+
+function stadium(w, h, depth, curve = 12) {
+  const r = h / 2;
+  const hw = Math.max(w / 2 - r, 0.001);
+  const s = new THREE.Shape();
+  s.moveTo(-hw, -r);
+  s.lineTo(hw, -r);
+  s.absarc(hw, 0, r, -Math.PI / 2, Math.PI / 2, false);
+  s.lineTo(-hw, r);
+  s.absarc(-hw, 0, r, Math.PI / 2, Math.PI * 1.5, false);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: curve });
+  g.translate(0, 0, -depth / 2);
+  g.computeVertexNormals();
+  return g;
+}
+
+const MAT = {
+  panel:  new THREE.MeshStandardMaterial({ color: 0x2f5578, roughness: 0.5, metalness: 0.06 }),
+  deck:   new THREE.MeshStandardMaterial({ color: 0x1e3c56, roughness: 0.55, metalness: 0.06 }),
+  metal:  new THREE.MeshStandardMaterial({ color: 0xb9c2cc, roughness: 0.42, metalness: 0.55 }),
+  dark:   new THREE.MeshStandardMaterial({ color: 0x1b1e23, roughness: 0.72, metalness: 0.1 }),
+  cone:   new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.9, metalness: 0 }),
+  cap:    new THREE.MeshStandardMaterial({ color: 0x5c636c, roughness: 0.5, metalness: 0.35 }),
+  pcb:    new THREE.MeshStandardMaterial({ color: 0x152a44, roughness: 0.66, metalness: 0.08 }),
+  pcbAmp: new THREE.MeshStandardMaterial({ color: 0x3a1f4d, roughness: 0.62, metalness: 0.08 }),
+  pin:    new THREE.MeshStandardMaterial({ color: 0x14171b, roughness: 0.8, metalness: 0.1 }),
+  gold:   new THREE.MeshStandardMaterial({ color: 0xc9a35c, roughness: 0.32, metalness: 0.85 }),
+  term:   new THREE.MeshStandardMaterial({ color: 0x39b06a, roughness: 0.6, metalness: 0.05 }),
+  glass:  new THREE.MeshStandardMaterial({ color: 0x2bd6b0, transparent: true, opacity: 0.16, roughness: 0.4, metalness: 0, side: THREE.DoubleSide }),
+  chamber: new THREE.MeshStandardMaterial({ color: 0x7fe3c6, transparent: true, opacity: 0.22, roughness: 0.8, metalness: 0 })
+};
+
+function faceTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 140;
+  const g = c.getContext('2d');
+  g.fillStyle = '#04060d'; g.fillRect(0, 0, 256, 140);
+  g.fillStyle = '#8fd4ff';
+  g.fillRect(66, 38, 26, 26);
+  g.fillRect(164, 38, 26, 26);
+  g.strokeStyle = '#8fd4ff'; g.lineWidth = 9;
+  g.beginPath(); g.arc(128, 78, 36, 0.16 * Math.PI, 0.84 * Math.PI); g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function labelSprite(text) {
+  const pad = 16, fs = 30;
+  const c = document.createElement('canvas');
+  const g0 = c.getContext('2d');
+  g0.font = '500 ' + fs + 'px system-ui, "Microsoft YaHei", sans-serif';
+  const w = Math.ceil(g0.measureText(text).width) + pad * 2;
+  c.width = w; c.height = fs + pad * 1.4;
+  const g = c.getContext('2d');
+  g.font = '500 ' + fs + 'px system-ui, "Microsoft YaHei", sans-serif';
+  g.fillStyle = 'rgba(12,16,22,0.78)';
+  g.beginPath();
+  const r = 10, W = c.width, H = c.height;
+  g.moveTo(r, 0); g.lineTo(W - r, 0); g.quadraticCurveTo(W, 0, W, r);
+  g.lineTo(W, H - r); g.quadraticCurveTo(W, H, W - r, H);
+  g.lineTo(r, H); g.quadraticCurveTo(0, H, 0, H - r);
+  g.lineTo(0, r); g.quadraticCurveTo(0, 0, r, 0); g.closePath(); g.fill();
+  g.fillStyle = '#dfe6f0';
+  g.textBaseline = 'middle';
+  g.fillText(text, pad, H / 2 + 1);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(c.width * 0.16, c.height * 0.16, 1);
+  sp.renderOrder = 20;
+  return sp;
+}
+
+const labels = [];
+function addLabel(text, pos) {
+  const s = labelSprite(text);
+  s.position.set(pos[0], pos[1], pos[2]);
+  scene.add(s);
+  labels.push(s);
+  return s;
+}
+
+// GAP 地板 = 36mm：受「侧板喇叭磁钢下缘」与「左侧排针顶端 13.1mm」的矛盾限制
+// 喇叭中线 = Y_MID，磁钢半径约 7 → 磁钢底缘 = Y_MID - 7，必须高于排针顶 + 1.5mm 安全间隙
+const W = 99, D = 78, BOT = 3, GAP = 36, TOP = 5;
+const Y_MID = BOT + GAP / 2;
+const SPK_Y = Y_MID + 2; // 喇叭抬高 2mm，把磁钢-排针余量从 0.9 提到 2.9mm
+const MIC_Y = BOT + GAP - 1.6; // 麦克风贴顶板下表面
+const Z_F = D / 2, Z_B = -D / 2;
+
+const baseGroup = new THREE.Group(); scene.add(baseGroup);
+const deckGroup = new THREE.Group(); scene.add(deckGroup);
+const leftSideGroup = new THREE.Group(); scene.add(leftSideGroup);
+
+box(W, BOT, D, MAT.deck, [0, BOT / 2, 0], baseGroup);
+box(W, TOP, D, MAT.deck, [0, BOT + GAP + TOP / 2, 0], deckGroup);
+
+const brassMat = new THREE.MeshStandardMaterial({ color: 0xc9a35c, roughness: 0.35, metalness: 0.8 });
+[[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(2.75, 2.75, GAP, 20), brassMat);
+  post.position.set(sx * 42, BOT + GAP / 2, sz * 31);
+  post.castShadow = true;
+  baseGroup.add(post);
+  const screwT = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4, 14), MAT.metal);
+  screwT.position.set(sx * 42, BOT + GAP + 2, sz * 31);
+  baseGroup.add(screwT);
+  const screwB = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4, 14), MAT.metal);
+  screwB.position.set(sx * 42, 1, sz * 31);
+  baseGroup.add(screwB);
+});
+
+const SIDE_T = 3, SIDE_W = 52, SIDE_ZC = 0;
+function sidePanel(x, group) {
+  box(SIDE_T, GAP, SIDE_W, MAT.panel, [x, Y_MID, SIDE_ZC], group);
+  [-14, 14].forEach(dz => {
+    box(SIDE_T, 5, 10, MAT.panel, [x, BOT + GAP + 2.5, SIDE_ZC + dz], group);
+    box(SIDE_T, 3, 10, MAT.panel, [x, 1.5, SIDE_ZC + dz], group);
+  });
+}
+sidePanel(-W / 2 + SIDE_T / 2, leftSideGroup);
+
+const spkX = -W / 2 + SIDE_T / 2;
+
+const frameGeo = stadium(40, 20, 5);
+const frame = new THREE.Mesh(frameGeo, MAT.metal);
+frame.rotation.y = Math.PI / 2;
+frame.position.set(spkX, SPK_Y, SIDE_ZC);
+frame.castShadow = true; frame.receiveShadow = true;
+frame.add(new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo, 26), edgeMat));
+leftSideGroup.add(frame);
+
+const coneGeo = stadium(35, 15.4, 2.4);
+const cone = new THREE.Mesh(coneGeo, MAT.cone);
+cone.rotation.y = Math.PI / 2;
+cone.position.set(spkX - 1.6, SPK_Y, SIDE_ZC);
+cone.receiveShadow = true;
+leftSideGroup.add(cone);
+
+const dustGeo = stadium(14, 8.6, 2);
+const dust = new THREE.Mesh(dustGeo, MAT.cap);
+dust.rotation.y = Math.PI / 2;
+dust.position.set(spkX - 2.9, SPK_Y, SIDE_ZC);
+leftSideGroup.add(dust);
+
+const magnetGeo = stadium(26, 11, 13);
+const magnet = new THREE.Mesh(magnetGeo, MAT.dark);
+magnet.rotation.y = Math.PI / 2;
+magnet.position.set(spkX + 12, SPK_Y, SIDE_ZC);
+magnet.castShadow = true;
+leftSideGroup.add(magnet);
+
+[[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sz, sy]) => {
+  const bolt = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 1.2, 12), MAT.metal);
+  bolt.rotation.z = Math.PI / 2;
+  bolt.position.set(spkX - 2.6, SPK_Y + sy * 8, SIDE_ZC + sz * 17);
+  leftSideGroup.add(bolt);
+});
+
+const chamberGeo = new THREE.BoxGeometry(28, 23, 44);
+const chamber = new THREE.Mesh(chamberGeo, MAT.chamber);
+chamber.position.set(-32.5, 26, SIDE_ZC);
+chamber.add(new THREE.LineSegments(new THREE.EdgesGeometry(chamberGeo), new THREE.LineBasicMaterial({ color: 0x5fe0be, transparent: true, opacity: 0.75 })));
+baseGroup.add(chamber);
+
+const esp = box(79, 1.6, 58, MAT.pcb, [0, BOT + 0.8, -7], baseGroup);
+for (let i = 0; i < 19; i++) {
+  const z = -30 + i * 2.54;
+  box(2.54, 8.5, 2.54, MAT.pin, [-36.5, BOT + 5.85, z], baseGroup, false);
+  box(2.54, 8.5, 2.54, MAT.pin, [36.5, BOT + 5.85, z], baseGroup, false);
+}
+box(6, 1.4, 6, MAT.dark, [-14, BOT + 2.3, -7], baseGroup);
+box(5, 5, 5, MAT.dark, [14, BOT + 4.1, -18], baseGroup);
+box(8, 9, 9, MAT.dark, [8, BOT + 6.1, -31], baseGroup);
+box(8.5, 3.4, 7.5, MAT.metal, [-12, BOT + 3.3, -31], baseGroup);
+box(7, 5.6, 5.6, MAT.dark, [-26, BOT + 4.4, -24], baseGroup);
+
+const ampBoard = box(25, 1.6, 27, MAT.pcbAmp, [36.5, BOT + 12, -6], baseGroup);
+box(9.5, 9.5, 11.5, MAT.term, [36.5, BOT + 17.5, -14], baseGroup);
+box(5.5, 1.4, 5.5, MAT.dark, [33, BOT + 13.5, -2], baseGroup);
+[-6, 0, 6].forEach(dz => {
+  box(0.6, 8, 0.6, MAT.gold, [30, BOT + 8, -6 + dz], baseGroup, false);
+});
+
+const mic = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 1.6, 40), MAT.dark);
+mic.position.set(35.5, MIC_Y, 22);
+mic.castShadow = true;
+baseGroup.add(mic);
+const micRing = new THREE.Mesh(new THREE.TorusGeometry(10.6, 0.5, 8, 44), MAT.gold);
+micRing.rotation.x = Math.PI / 2;
+micRing.position.set(35.5, MIC_Y, 22);
+baseGroup.add(micRing);
+const hole = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 6, 20), MAT.dark);
+hole.position.set(35.5, BOT + GAP + TOP / 2, 22);
+deckGroup.add(hole);
+
+const servoMat = new THREE.MeshStandardMaterial({ color: 0x22558f, roughness: 0.5, metalness: 0.2 });
+
+const gimbal = new THREE.Group();
+gimbal.position.set(0, BOT + GAP + TOP, 0); // 云台在顶板上居中
+gimbal.rotation.y = Math.PI / 2; // U型臂/俯仰轴沿前后方向
+deckGroup.add(gimbal);
+
+box(52, 3, 51, MAT.metal, [0, 1.5, 0], gimbal);
+[[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 3.4, 14), MAT.dark);
+  p.position.set(sx * 23, 1.7, sz * 21.5);
+  gimbal.add(p);
+});
+
+box(3, 20, 28, MAT.metal, [-16.5, 13, 0], gimbal);
+box(3, 20, 28, MAT.metal, [16.5, 13, 0], gimbal);
+box(23, 12.5, 29, servoMat, [0, 9.5, 0], gimbal);
+
+const yawGroup = new THREE.Group();
+yawGroup.position.set(0, 23, 0);
+gimbal.add(yawGroup);
+
+box(24, 4, 20, MAT.metal, [0, 2, 0], yawGroup);
+box(3, 26, 20, MAT.metal, [-11, 16, 3], yawGroup);
+box(3, 26, 20, MAT.metal, [11, 16, 3], yawGroup);
+box(23, 12.5, 29, servoMat, [0, 22, 0], yawGroup);
+
+const pitchGroup = new THREE.Group();
+pitchGroup.position.set(0, 27, 3);
+yawGroup.add(pitchGroup);
+
+const axle = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 26, 16), MAT.metal);
+axle.rotation.z = Math.PI / 2;
+pitchGroup.add(axle);
+
+box(2.5, 20, 26, MAT.metal, [-15.5, 15, 2], pitchGroup);
+box(2.5, 20, 26, MAT.metal, [15.5, 15, 2], pitchGroup);
+box(27, 26, 1.6, MAT.pcb, [0, 15, 2], pitchGroup); // OLED 模块绕竖轴转90°: 板面垂直于俯仰轴
+const screen = new THREE.Mesh(
+  new THREE.PlaneGeometry(26, 14),
+  new THREE.MeshBasicMaterial({ map: faceTexture(), side: THREE.DoubleSide })
+);
+screen.rotation.y = Math.PI; // 屏幕法线朝 -X（与喇叭同侧）
+screen.position.set(0, 16, 1.1);
+pitchGroup.add(screen);
+
+addLabel('跑道喇叭 40×20 · 嵌左侧板', [-74, 40, 10]);
+addLabel('密封背腔 ≈28cm³', [-32, 44, 8]);
+addLabel('四角 M3 铜柱 36mm', [-58, 24, -38]);
+addLabel('ESP32-S3 扩展板', [-6, 14, -8]);
+addLabel('MAX98357A 插排针', [78, 26, -6]);
+addLabel('INMP441 麦克风', [58, 40, 24]);
+addLabel('OLED 屏 · 云台顶部 · 朝左（与喇叭同侧）', [-12, 122, 18]);
+addLabel('二自由度云台 52×51×65', [-50, 80, -12]);
+
+const exploders = [];
+function reg(obj, dir, dist) {
+  obj.userData.exp = { dir: new THREE.Vector3(dir[0], dir[1], dir[2]).normalize(), dist, base: obj.position.clone() };
+  exploders.push(obj);
+}
+reg(leftSideGroup, [-1, 0, 0], 120);
+reg(deckGroup, [0, 1, 0], 150);
+reg(baseGroup, [0, -1, 0], 70);
+
+document.getElementById('yaw').addEventListener('input', e => {
+  const v = +e.target.value;
+  yawGroup.rotation.y = THREE.MathUtils.degToRad(v);
+  document.getElementById('vYaw').textContent = v + '°';
+});
+
+document.getElementById('pitch').addEventListener('input', e => {
+  const v = +e.target.value;
+  pitchGroup.rotation.x = -THREE.MathUtils.degToRad(v);
+  document.getElementById('vPitch').textContent = v + '°';
+});
+
+document.getElementById('exp').addEventListener('input', e => {
+  const t = +e.target.value / 100;
+  exploders.forEach(o => {
+    const d = o.userData.exp;
+    o.position.copy(d.base).addScaledVector(d.dir, d.dist * t);
+  });
+  document.getElementById('vExp').textContent = e.target.value + '%';
+});
+
+const btnCut = document.getElementById('btnCut');
+let cut = false;
+btnCut.addEventListener('click', () => {
+  cut = !cut;
+  btnCut.classList.toggle('on', cut);
+  deckGroup.visible = !cut;
+  leftSideGroup.visible = !cut;
+});
+
+const btnSpin = document.getElementById('btnSpin');
+btnSpin.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  controls.autoRotateSpeed = 0.9;
+  btnSpin.classList.toggle('on', controls.autoRotate);
+});
+
+const btnLab = document.getElementById('btnLab');
+let showLab = true;
+btnLab.addEventListener('click', () => {
+  showLab = !showLab;
+  labels.forEach(l => (l.visible = showLab));
+  btnLab.classList.toggle('on', showLab);
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  camera.position.set(-250, 215, 330);
+  controls.target.set(0, 62, 0);
+  controls.update();
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  labels.forEach(l => {
+    const s = 0.11 * (camera.position.distanceTo(controls.target) / 320);
+    const m = l.material;
+    const w = m.map.image.width * s;
+    const h = m.map.image.height * s;
+    l.scale.set(w, h, 1);
+  });
+  renderer.render(scene, camera);
+}
+
+if (!renderer.getContext()) {
+  document.getElementById('err').style.display = 'grid';
+} else {
+  animate();
+}
+</script>
+</body>
+</html>

@@ -1,4 +1,7 @@
 *.py
+# 2026-09-18: Track the optional streaming gateway and its protocol tests while keeping unrelated local Python files ignored.
+!gateway/server.py
+!gateway/test_server.py
 .cursorrules
 build/
 .vscode/

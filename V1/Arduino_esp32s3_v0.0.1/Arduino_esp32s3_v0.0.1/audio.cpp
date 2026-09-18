@@ -4,6 +4,8 @@
 
 // 2026-09-11: Use ESP-IDF's new standard-mode I2S API so audio can coexist with the new driver linked by ESP-SR.
 #include <driver/i2s_std.h>
+// 2026-09-17: Mark the first I2S write separately from TTS audio arrival for latency measurement.
+#include "latency_trace.h"
 
 // 2026-09-11: Keep the original legacy I2S configuration for reference, but exclude all legacy symbols from the firmware.
 #if 0
@@ -290,6 +292,10 @@ void play(const int16_t *data, size_t length, float volume_ratio) {
     }
 
     size_t bytes_written = 0;
+    // 2026-09-17: Timestamp immediately before the first PCM chunk is submitted to the speaker's I2S DMA path.
+    if (offset == 0) {
+      latency_trace_mark(LatencyEvent::PLAYBACK_START);
+    }
     esp_err_t result = i2s_channel_write(
         i2s_out_handle, stereo_samples, chunk_samples * stereo_frame_bytes,
         &bytes_written, portMAX_DELAY);

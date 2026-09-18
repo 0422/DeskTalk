@@ -16,6 +16,9 @@ void eye_anger();
 void eye_surprise();  
 void eye_right();  
 void eye_left(); 
+// 2026-09-18: Show lightweight listening and thinking states without blocking microphone sampling or network requests.
+void eye_listening();
+void eye_thinking();
 void emoji_init(); 
 
 #endif
