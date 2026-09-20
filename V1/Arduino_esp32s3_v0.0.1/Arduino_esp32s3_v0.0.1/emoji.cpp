@@ -351,8 +351,20 @@ void emoji_init() {
   if (!oled_is_ready()) {
     return;
   }
+  // 2026-09-18: Measure each startup OLED animation step because the wake
+  // model is ready before Desk-Emoji reports setup completion.
+  const unsigned long started_at = millis();
+  unsigned long step_started_at = started_at;
   eye_sleep();
+  log_info("BOOT emoji eye_sleep=%lu ms", millis() - step_started_at);
+  step_started_at = millis();
   eye_wakeup();
+  log_info("BOOT emoji eye_wakeup=%lu ms", millis() - step_started_at);
+  step_started_at = millis();
   eye_center();
+  log_info("BOOT emoji eye_center=%lu ms", millis() - step_started_at);
+  step_started_at = millis();
   eye_blink();
+  log_info("BOOT emoji eye_blink=%lu ms, total=%lu ms",
+           millis() - step_started_at, millis() - started_at);
 }

@@ -264,7 +264,9 @@ void enhanceVoice(int16_t *data, size_t length) {
   }
 }
 
-void play(const int16_t *data, size_t length, float volume_ratio) {
+// void play(const int16_t *data, size_t length, float volume_ratio) {
+// 2026-09-18: Return an explicit status so TTS can reject partial I2S writes.
+bool play(const int16_t *data, size_t length, float volume_ratio) {
   // 2026-09-11: Keep the original sample-by-sample legacy write for reference while using the new TX channel below.
 #if 0
   size_t bytes_written;
@@ -275,7 +277,8 @@ void play(const int16_t *data, size_t length, float volume_ratio) {
 #endif
   // 2026-09-11: Write scaled audio in bounded chunks to reduce driver overhead and re-enable the amplifier after stop_play().
   if (!speaker_ready || i2s_out_handle == nullptr) {
-    return;
+    // return;
+    return false;
   }
 
   digitalWrite(MAX98357_SD, HIGH);
@@ -301,21 +304,26 @@ void play(const int16_t *data, size_t length, float volume_ratio) {
         &bytes_written, portMAX_DELAY);
     if (result != ESP_OK) {
       log_error("Speaker I2S write failed: %s", esp_err_to_name(result));
-      break;
+      // break;
+      return false;
     }
     // 2026-09-11: Prevent an unexpected zero-length successful write from leaving playback in an endless loop.
     if (bytes_written == 0) {
       log_error("Speaker I2S write returned zero bytes");
-      break;
+      // break;
+      return false;
     }
     if (bytes_written % stereo_frame_bytes != 0) {
       log_error("Speaker I2S write returned a partial stereo frame");
-      break;
+      // break;
+      return false;
     }
     offset += bytes_written / stereo_frame_bytes;
   }
+  return true;
 }
 
+#if 0
 void wait_for_playback_complete() {
   if (!speaker_ready || i2s_out_handle == nullptr) {
     return;
@@ -329,6 +337,45 @@ void wait_for_playback_complete() {
           SAMPLE_RATE +
       50;
   delay(dma_drain_ms);
+}
+#endif
+
+// 2026-09-18: Drain checked silence through the complete DMA ring because the
+// installed ESP-IDF 5.1 API has no i2s_channel_wait_tx_done().
+bool wait_for_playback_complete() {
+  if (!speaker_ready || i2s_out_handle == nullptr) {
+    return false;
+  }
+
+  // i2s_channel_write() returns after copying data into DMA. ESP-IDF 5.1 does
+  // not expose i2s_channel_wait_tx_done(), so push one complete DMA ring of
+  // silence. FIFO ordering guarantees all preceding speech has reached the
+  // amplifier; muting afterward can only remove the silence tail.
+  // 2026-09-18: Replace the estimated delay with checked DMA writes so the
+  // final spoken samples cannot be cut off silently.
+  static constexpr size_t kDrainChunkFrames = 128;
+  static constexpr size_t kStereoFrameBytes = sizeof(int16_t) * 2;
+  int16_t silence[kDrainChunkFrames * 2] = {};
+  size_t frames_remaining = DMA_BUF_COUNT * DMA_BUF_LEN;
+  while (frames_remaining > 0) {
+    const size_t frames = min(kDrainChunkFrames, frames_remaining);
+    size_t bytes_written = 0;
+    const esp_err_t result = i2s_channel_write(
+        i2s_out_handle, silence, frames * kStereoFrameBytes,
+        &bytes_written, portMAX_DELAY);
+    if (result != ESP_OK) {
+      log_error("Speaker DMA drain failed: %s", esp_err_to_name(result));
+      return false;
+    }
+    if (bytes_written != frames * kStereoFrameBytes) {
+      log_error("Speaker DMA drain wrote %u of %u bytes",
+                static_cast<unsigned int>(bytes_written),
+                static_cast<unsigned int>(frames * kStereoFrameBytes));
+      return false;
+    }
+    frames_remaining -= frames;
+  }
+  return true;
 }
 
 void test_speaker() {
@@ -351,9 +398,13 @@ void test_speaker() {
       const float phase = kTwoPi * kToneFrequency * (offset + i) / SAMPLE_RATE;
       tone[i] = static_cast<int16_t>(kToneAmplitude * sinf(phase));
     }
-    play(tone, count, 1.0f);
+    if (!play(tone, count, 1.0f)) {
+      break;
+    }
   }
-  wait_for_playback_complete();
+  if (!wait_for_playback_complete()) {
+    log_error("Speaker test DMA drain failed");
+  }
   stop_play();
 }
 

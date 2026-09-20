@@ -1,5 +1,0 @@
-# 2026-09-11: Add a 6 MB application option that keeps the ESP-SR model upload at 0xD10000 for this 16 MB firmware.
-esp32s3.menu.PartitionScheme.desk_emoji_16=Desk Emoji 16M (6MB APP/ESP-SR MODEL)
-esp32s3.menu.PartitionScheme.desk_emoji_16.upload.maximum_size=6291456
-esp32s3.menu.PartitionScheme.desk_emoji_16.upload.extra_flags=0xD10000 {build.path}/srmodels.bin
-esp32s3.menu.PartitionScheme.desk_emoji_16.build.partitions=esp_sr_16

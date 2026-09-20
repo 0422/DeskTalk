@@ -1,8 +1,42 @@
 #include "llm.h"
+#include <esp_heap_caps.h>
 // 2026-09-17: Observe the first LLM response-body byte for the V1 latency baseline.
 #include "latency_trace.h"
 
 namespace {
+
+// 2026-09-18: Snapshot the internal heap around DeepSeek HTTP/TLS creation so
+// an ESP-IDF migration is based on measured resource pressure, not guesswork.
+constexpr bool kEnableLlmMemoryDiagnostics = true;
+
+void logLlmMemoryDiagnostics(const char *stage) {
+  if (!kEnableLlmMemoryDiagnostics) {
+    return;
+  }
+  const size_t internal_free =
+      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t internal_min =
+      heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t internal_largest =
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t dma_free = heap_caps_get_free_size(MALLOC_CAP_DMA);
+  const size_t psram_free = psramFound()
+                                ? heap_caps_get_free_size(
+                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                                : 0;
+  log_info(
+      "MEM LLM %s: heap=%u heap_min=%u max=%u internal=%u "
+      "internal_min=%u internal_max=%u dma=%u psram=%u",
+      stage == nullptr ? "unknown" : stage,
+      static_cast<unsigned int>(ESP.getFreeHeap()),
+      static_cast<unsigned int>(ESP.getMinFreeHeap()),
+      static_cast<unsigned int>(ESP.getMaxAllocHeap()),
+      static_cast<unsigned int>(internal_free),
+      static_cast<unsigned int>(internal_min),
+      static_cast<unsigned int>(internal_largest),
+      static_cast<unsigned int>(dma_free),
+      static_cast<unsigned int>(psram_free));
+}
 
 // 2026-09-17: Collect HTTP response data while timestamping the first decoded body byte without logging on the request path.
 class LlmResponseStream final : public Stream {
@@ -295,6 +329,9 @@ class StreamingAnswerSegmenter {
     }
     answer_found_ = true;
     answer_complete_ = answer_complete;
+    // 2026-09-18: Retain the latest fully decoded answer so an intentional
+    // early HTTP stop can still build a valid local reply object.
+    latest_answer_ = decoded;
     if (decoded.length() < processed_answer_bytes_) {
       failed_ = true;
       return false;
@@ -325,6 +362,10 @@ class StreamingAnswerSegmenter {
   }
 
   bool sentenceEmitted() const { return sentence_emitted_; }
+  // 2026-09-18: Expose only the answer completion state needed to distinguish
+  // a deliberate low-latency stop from a truncated provider response.
+  bool answerComplete() const { return answer_complete_; }
+  const String &answer() const { return latest_answer_; }
 
  private:
   // static constexpr size_t kSoftBoundaryMinimumCodePoints = 12;
@@ -383,6 +424,7 @@ class StreamingAnswerSegmenter {
   void *context_ = nullptr;
   String pending_;
   size_t processed_answer_bytes_ = 0;
+  String latest_answer_;
   bool answer_found_ = false;
   bool answer_complete_ = false;
   bool sentence_emitted_ = false;
@@ -394,14 +436,23 @@ class StreamingAnswerSegmenter {
 class DeepSeekSseStream final : public Stream {
  public:
   DeepSeekSseStream(String &destination, LlmSentenceCallback callback,
-                    void *context)
-      : destination_(destination), segmenter_(callback, context) {
+                    void *context, bool stop_after_answer)
+      : destination_(destination), segmenter_(callback, context),
+        stop_after_answer_(stop_after_answer) {
     line_.reserve(1024);
     destination_.reserve(1024);
   }
 
   size_t write(uint8_t value) override {
-    return acceptByte(static_cast<char>(value)) ? 1 : 0;
+    if (!acceptByte(static_cast<char>(value))) {
+      return 0;
+    }
+    // 2026-09-18: Signal HTTPClient to stop reading only after one complete
+    // answer has been captured; the caller explicitly recognizes this error.
+    if (stopped_after_answer_) {
+      setWriteError(1);
+    }
+    return 1;
   }
 
   size_t write(const uint8_t *buffer, size_t size) override {
@@ -409,8 +460,18 @@ class DeepSeekSseStream final : public Stream {
       return 0;
     }
     size_t written = 0;
-    while (written < size && acceptByte(static_cast<char>(buffer[written]))) {
+    while (written < size) {
+      if (!acceptByte(static_cast<char>(buffer[written]))) {
+        break;
+      }
       ++written;
+      if (stopped_after_answer_) {
+        // 2026-09-18: Claim the current network block as consumed while
+        // setting a write error, preventing HTTPClient from retrying bytes
+        // after the answer that the firmware deliberately no longer needs.
+        setWriteError(1);
+        return size;
+      }
     }
     return written;
   }
@@ -429,6 +490,8 @@ class DeepSeekSseStream final : public Stream {
   }
 
   bool sentenceEmitted() const { return segmenter_.sentenceEmitted(); }
+  bool stoppedAfterAnswer() const { return stopped_after_answer_; }
+  const String &completedAnswer() const { return completed_answer_; }
 
  private:
   static constexpr size_t kMaxSseLineBytes = 8192;
@@ -485,6 +548,17 @@ class DeepSeekSseStream final : public Stream {
       parse_failed_ = true;
       return;
     }
+    // 2026-09-18: Flush the answer as one speakable item and stop before the
+    // model spends more time generating action metadata. This is intentional,
+    // not a retryable transport failure.
+    if (stop_after_answer_ && segmenter_.answerComplete()) {
+      completed_answer_ = segmenter_.answer();
+      if (completed_answer_.isEmpty() || !segmenter_.finish()) {
+        parse_failed_ = true;
+        return;
+      }
+      stopped_after_answer_ = true;
+    }
     if (!content_received_) {
       content_received_ = true;
       // 2026-09-17: In streaming mode this milestone is the first non-empty content token, not a buffered full response.
@@ -495,6 +569,9 @@ class DeepSeekSseStream final : public Stream {
   String &destination_;
   StreamingAnswerSegmenter segmenter_;
   String line_;
+  String completed_answer_;
+  bool stop_after_answer_ = false;
+  bool stopped_after_answer_ = false;
   bool stream_done_ = false;
   bool content_received_ = false;
   bool parse_failed_ = false;
@@ -563,12 +640,49 @@ String remove_code_fence(String text) {
         text.remove(text.length() - 3);
     }
     text.trim();
-    return text;
+  return text;
+}
+
+// 2026-09-18: Build a valid answer-only object after the SSE reader
+// intentionally closes before cloud-generated action metadata.
+String makeFastStructuredReply(const String &answer) {
+  JsonDocument reply;
+  reply["answer"] = answer;
+  String serialized;
+  serializeJson(reply, serialized);
+  return serialized;
+}
+
+// 2026-09-18: Preserve expressive feedback without spending cloud tokens or
+// keeping the DeepSeek TLS stream open for an actions array.
+String chooseLocalActions(const String &question, const String &answer) {
+  const bool negative = answer.indexOf("不") >= 0 ||
+                        answer.indexOf("没") >= 0 ||
+                        answer.indexOf("不能") >= 0 ||
+                        answer.indexOf("不会") >= 0;
+  if (negative) {
+    return "puzzled,head_shake,eye_blink";
+  }
+  const bool explanatory = question.indexOf("为什么") >= 0 ||
+                           question.indexOf("怎么") >= 0 ||
+                           question.indexOf("多少") >= 0 ||
+                           question.indexOf("什么") >= 0;
+  if (explanatory) {
+    return "thinking,head_nod,eye_blink";
+  }
+  return "eye_happy,head_nod,eye_blink";
 }
 
 }  // namespace
 
 LLM::LLM() {
+    // system_prompt.reserve(strlen(ROLE_PROMPT) + strlen(LLM_PROMPT));
+    // 2026-09-18: Preassemble the shorter answer-only contract so prompt
+    // upload and provider prefix processing are reduced on every direct turn.
+    system_prompt.reserve(strlen(ROLE_PROMPT) + strlen(FAST_LLM_PROMPT));
+    system_prompt = ROLE_PROMPT;
+    // system_prompt += LLM_PROMPT;
+    system_prompt += FAST_LLM_PROMPT;
 }
 
 String LLM::answer() {
@@ -686,7 +800,9 @@ void LLM::save_history(String question, String answer) {
 String LLM::chat(String question, LlmSentenceCallback sentence_callback,
                  void *sentence_context,
                  LlmResponseReadyCallback response_ready_callback,
-                 void *response_ready_context) {
+                 void *response_ready_context,
+                 LlmTransportRetryCallback transport_retry_callback,
+                 void *transport_retry_context) {
     llm_answer = "";
     llm_actions = "";
     llm_response = "";
@@ -706,13 +822,19 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
     // 2026-09-17: Bound spoken replies to reduce generation time and long blocking TTS playback.
     // requestDoc["max_tokens"] = 192;
     // 2026-09-18: Bound JSON replies more tightly so short spoken answers finish generation sooner without truncating actions.
-    requestDoc["max_tokens"] = 160;
+    // requestDoc["max_tokens"] = 160;
+    // requestDoc["max_tokens"] = 112;
+    // 2026-09-18: Bound the compact answer-only JSON while leaving enough
+    // room for a complete 12-24 character Chinese reply.
+    requestDoc["max_tokens"] = 80;
     requestDoc["thinking"]["type"] = "disabled";
     requestDoc["response_format"]["type"] = "json_object";
     JsonArray messages = requestDoc["messages"].to<JsonArray>();
     JsonObject systemMessage = messages.add<JsonObject>();
     systemMessage["role"] = "system";
-    systemMessage["content"] = String(ROLE_PROMPT) + LLM_PROMPT;
+    // systemMessage["content"] = String(ROLE_PROMPT) + LLM_PROMPT;
+    // 2026-09-18: Reuse the prompt assembled during startup.
+    systemMessage["content"] = system_prompt;
 
     String history = load_history();
     if (history.length() > MAX_HISTORY_BYTES) {
@@ -796,10 +918,15 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
         HTTPClient http;
         log_info("LLM request attempt %u/%u", attempt,
                  kLlmMaxRequestAttempts);
+        // 2026-09-18: Capture the heap immediately before allocating the
+        // DeepSeek HTTP/TLS client for comparison with TTS snapshots.
+        logLlmMemoryDiagnostics("before-http-begin");
 
         if (!http.begin(API_URL)) {
             httpResponseCode = HTTPC_ERROR_CONNECTION_REFUSED;
+            logLlmMemoryDiagnostics("http-begin-failed");
         } else {
+            logLlmMemoryDiagnostics("after-http-begin");
             http.addHeader("Content-Type", "application/json");
             http.addHeader("Authorization", String("Bearer ") + API_KEY);
             // 2026-09-17: Explicitly request the event-stream media type used by DeepSeek streaming chat completions.
@@ -807,6 +934,9 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
             http.setConnectTimeout(10000);
             http.setTimeout(60000);
             httpResponseCode = http.POST(jsonString);
+            // 2026-09-18: POST includes the HTTPS handshake; this snapshot
+            // shows the low-water mark while the DeepSeek request is active.
+            logLlmMemoryDiagnostics("after-http-post");
             if (httpResponseCode > 0) {
                 // responseBody = http.getString();
                 // 2026-09-17: Decode successful SSE chunks incrementally; retain ordinary JSON bodies for provider errors.
@@ -815,13 +945,27 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
                 int bodyReadResult = 0;
                 bool responseComplete = true;
                 if (successfulStatus) {
-                    // DeepSeekSseStream responseStream(
-                    //     responseBody, sentence_callback, sentence_context);
-                    // 2026-09-18: Decode SSE now but defer speech enqueueing until the complete answer JSON is validated.
-                    DeepSeekSseStream responseStream(responseBody, nullptr,
-                                                     nullptr);
+                    // DeepSeekSseStream responseStream(responseBody, nullptr,
+                    //                                  nullptr);
+                    // 2026-09-18: Feed the complete answer to TTS and allow the
+                    // parser to stop before unnecessary metadata is generated.
+                    DeepSeekSseStream responseStream(
+                        responseBody, sentence_callback, sentence_context,
+                        sentence_callback != nullptr);
                     bodyReadResult = http.writeToStream(&responseStream);
-                    responseComplete = bodyReadResult >= 0 && responseStream.finish();
+                    // 2026-09-18: Treat only the parser's explicit
+                    // answer-complete stop as success. All other short writes
+                    // remain ordinary transport or encoding failures.
+                    if (responseStream.stoppedAfterAnswer() &&
+                        bodyReadResult == HTTPC_ERROR_STREAM_WRITE) {
+                        responseBody = makeFastStructuredReply(
+                            responseStream.completedAnswer());
+                        bodyReadResult = 0;
+                        responseComplete = !responseBody.isEmpty();
+                    } else {
+                        responseComplete =
+                            bodyReadResult >= 0 && responseStream.finish();
+                    }
                     sentence_was_enqueued =
                         sentence_was_enqueued || responseStream.sentenceEmitted();
                 } else {
@@ -838,6 +982,9 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
                 }
             }
             http.end();
+            // 2026-09-18: Confirm whether HTTPClient returns the TLS buffers
+            // and whether the largest contiguous internal block recovers.
+            logLlmMemoryDiagnostics("after-http-end");
         }
 
         if (httpResponseCode >= 200 && httpResponseCode < 300) {
@@ -871,6 +1018,12 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
             return "";
         }
 
+        // 2026-09-18: A warm TTS TLS socket is optional. Release it before the
+        // first DeepSeek transport retry so cross-turn reuse can never make a
+        // conversation permanently fail on a constrained internal heap.
+        if (transport_retry_callback != nullptr) {
+            transport_retry_callback(transport_retry_context);
+        }
         log_warn("LLM request temporarily unavailable; retrying in %u seconds",
                  attempt);
         delay(static_cast<unsigned long>(attempt) * 1000UL);
@@ -907,7 +1060,8 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
     JsonDocument replyDoc;
     DeserializationError replyError =
         deserializeJson(replyDoc, structuredReply);
-    // 2026-09-17: Release playback only after the full JSON answer is valid; malformed or partial streams remain silent until cleanup.
+    // 2026-09-18: Validate the complete object for actions/history after
+    // punctuation-complete answer phrases may already have reached TTS.
     bool structured_reply_valid = false;
     if (!replyError && replyDoc["answer"].is<const char*>()) {
         llm_answer = replyDoc["answer"].as<String>();
@@ -924,13 +1078,21 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
         log_error("LLM output did not match the requested answer/actions JSON");
         llm_answer = llm_response;
     }
+    // 2026-09-18: Supply actions locally for the compact answer-only contract;
+    // cloud-provided actions remain usable if the old full-response path is
+    // ever restored.
+    if (!llm_answer.isEmpty() && llm_actions.isEmpty()) {
+        llm_actions = chooseLocalActions(question, llm_answer);
+    }
 
     // 2026-09-18: Record full validated generation separately from first-token time.
     if (structured_reply_valid) {
         latency_trace_mark(LatencyEvent::LLM_DONE);
     }
 
-    // 2026-09-18: Queue one complete answer instead of punctuation fragments, eliminating repeated TTS handshakes and short tails.
+    // 2026-09-18: The former complete-answer enqueue is retained below for
+    // reference; streaming phrases are already queued by DeepSeekSseStream.
+#if 0
     bool complete_answer_queued = sentence_callback == nullptr;
     if (structured_reply_valid && sentence_callback != nullptr) {
         complete_answer_queued = sentence_callback(llm_answer,
@@ -939,23 +1101,49 @@ String LLM::chat(String question, LlmSentenceCallback sentence_callback,
             log_error("Unable to queue complete LLM answer for TTS");
         }
     }
+#endif
+    const bool complete_answer_queued =
+        sentence_callback == nullptr || sentence_was_enqueued;
 
-    // 2026-09-17: DeepSeek HTTP has ended at this point, so TTS can safely claim TLS while history is saved.
+    // 2026-09-18: Release TTS only after http.end() has freed DeepSeek TLS;
+    // queued phrases still preserve streaming segmentation without dual TLS.
     if (structured_reply_valid && complete_answer_queued &&
         response_ready_callback != nullptr) {
         response_ready_callback(response_ready_context);
     }
 
-    // 2026-09-18: Print the full response after releasing TTS so serial output cannot delay its connection start.
-    log_info_text("Bot: ", llm_response);
+    // log_info_text("Bot: ", llm_response);
+    // 2026-09-18: Defer serial output and FFat writes until playback completes
+    // so the TTS worker owns the critical connection-to-first-audio interval.
 
     // DeepSeek is stateless. Preserve the exact assistant message so the next
     // request can reproduce the conversation defined by the API guide.
-    save_history(question, structuredReply);
+    // save_history(question, structuredReply);
 
     return llm_response;
 }
 
+// 2026-09-18: Commit a direct reply after TTS playback, outside the measured
+// first-audio path. The answer-only JSON remains valid conversational history.
+void LLM::finishDirectReply(const String &question) {
+    if (llm_response.isEmpty()) {
+        return;
+    }
+    const String structured_reply = remove_code_fence(llm_response);
+    // 2026-09-18: Never persist a partial transport/error body when the fast
+    // path did not produce a complete answer object.
+    JsonDocument reply;
+    if (deserializeJson(reply, structured_reply) ||
+        !reply["answer"].is<const char *>()) {
+        return;
+    }
+    log_info_text("Bot: ", llm_response);
+    save_history(question, structured_reply);
+}
+
+#if 0
+// 2026-09-18: Preserve the gateway-only reply bridge without compiling it in
+// board-direct mode. The direct LLM/TTS path below remains active.
 // 2026-09-18: Send the current prompt and latest valid history to the gateway without copying API credentials to the device request.
 String LLM::gatewayRequest(const String &question) {
     // 2026-09-18: Clear the previous turn before any connection attempt so an early gateway failure cannot replay stale speech.
@@ -965,7 +1153,10 @@ String LLM::gatewayRequest(const String &question) {
     JsonDocument request;
     request["type"] = "chat";
     request["question"] = question;
-    request["system"] = String(ROLE_PROMPT) + LLM_PROMPT;
+    // request["system"] = String(ROLE_PROMPT) + LLM_PROMPT;
+    // 2026-09-18: Reuse the startup-built prompt while still transmitting it
+    // on every stateless gateway/DeepSeek request.
+    request["system"] = system_prompt;
     JsonArray recent = request["history"].to<JsonArray>();
     JsonDocument stored;
     const String history = load_history();
@@ -1036,6 +1227,7 @@ void LLM::finishGatewayReply(const String &question) {
     log_info_text("Bot: ", llm_response);
     save_history(question, llm_response);
 }
+#endif  // 2026-09-18: gateway-only LLM bridge disabled.
 
 void LLM::stream_chat(String question) {
     // doc["stream"] = true;

@@ -9,7 +9,11 @@ import struct
 import uuid
 from dataclasses import dataclass
 
-from aiohttp import ClientError, ClientSession, ClientTimeout, WSMsgType, web
+# from aiohttp import ClientError, ClientSession, ClientTimeout, WSMsgType, web
+# 2026-09-18: TCPConnector keeps provider DNS and idle HTTP connections warm
+# across independent device conversation turns.
+from aiohttp import (ClientError, ClientSession, ClientTimeout, TCPConnector,
+                     WSMsgType, web)
 
 
 # 2026-09-18: Carry the partial-audio fact across connection errors so retries cannot repeat already spoken words.
@@ -102,7 +106,11 @@ def first_clause(answer):
             continue
         if index + 1 >= 12 and char in "。！？.!?；;":
             return answer[:index + 1]
-        if index + 1 >= 26 and char in "，,：:":
+        # if index + 1 >= 26 and char in "，,：:":
+        # 2026-09-18: Start TTS at the first useful comma-sized clause; seven
+        # characters rejects fillers such as "对呀，" without waiting for the
+        # end of the model's complete sentence.
+        if index + 1 >= 7 and char in "，,：:":
             return answer[:index + 1]
     return ""
 
@@ -179,12 +187,189 @@ def parse_volc_frame(frame):
     return message_type, event, sequence, error_code, payload
 
 
+# 2026-09-18: Encode Volcengine V3 bidirectional control frames so one warm
+# provider WebSocket can serve sequential synthesis Sessions across turns.
+def make_bidirectional_frame(event, payload="{}", session_id=""):
+    payload_bytes = payload.encode("utf-8") if isinstance(payload, str) else payload
+    session_bytes = session_id.encode("utf-8")
+    frame = bytearray((0x11, 0x14, 0x10, 0))
+    frame.extend(struct.pack(">i", event))
+    if session_bytes:
+        frame.extend(struct.pack(">I", len(session_bytes)))
+        frame.extend(session_bytes)
+    frame.extend(struct.pack(">I", len(payload_bytes)))
+    frame.extend(payload_bytes)
+    return bytes(frame)
+
+
+# 2026-09-18: Keep one authenticated bidirectional TTS connection warm and
+# serialize provider Sessions on it. The existing one-shot synthesize() below
+# remains the zero-audio fallback when this connection is unavailable.
+class VolcBidirectionalTts:
+    START_CONNECTION = 1
+    FINISH_CONNECTION = 2
+    CONNECTION_STARTED = 50
+    CONNECTION_FAILED = 51
+    CONNECTION_FINISHED = 52
+    START_SESSION = 100
+    FINISH_SESSION = 102
+    SESSION_STARTED = 150
+    SESSION_FINISHED = 152
+    SESSION_FAILED = 153
+    TASK_REQUEST = 200
+
+    def __init__(self, session, settings):
+        self.session = session
+        self.settings = settings
+        self.socket = None
+        self.ready = False
+        self.lock = asyncio.Lock()
+
+    def _headers(self):
+        headers = {
+            "X-Api-Resource-Id": "seed-tts-2.0",
+            "X-Api-Connect-Id": str(uuid.uuid4()),
+        }
+        if self.settings.volc_api_key:
+            headers["X-Api-Key"] = self.settings.volc_api_key
+        else:
+            headers["X-Api-App-Id"] = self.settings.volc_app_id
+            headers["X-Api-Access-Key"] = self.settings.volc_access_token
+        return headers
+
+    async def _drop_socket(self):
+        socket = self.socket
+        self.socket = None
+        self.ready = False
+        if socket is not None and not socket.closed:
+            await socket.close()
+
+    async def _receive_frame(self, timeout):
+        while self.socket is not None and not self.socket.closed:
+            message = await asyncio.wait_for(self.socket.receive(), timeout)
+            if message.type == WSMsgType.BINARY:
+                return parse_volc_frame(message.data)
+            if message.type in (WSMsgType.CLOSE, WSMsgType.CLOSED,
+                                WSMsgType.ERROR):
+                raise RuntimeError("Volc bidirectional WebSocket closed")
+        raise RuntimeError("Volc bidirectional WebSocket is not connected")
+
+    async def _wait_for_event(self, expected, timeout=5):
+        while True:
+            kind, event, _sequence, code, payload = await self._receive_frame(timeout)
+            if kind == 15 or event in (self.CONNECTION_FAILED,
+                                       self.SESSION_FAILED):
+                detail = payload.decode("utf-8", errors="replace")
+                raise RuntimeError(f"Volc TTS error {code or event}: {detail}")
+            if event == expected:
+                return
+
+    async def _ensure_connected(self):
+        if self.ready and self.socket is not None and not self.socket.closed:
+            return
+        await self._drop_socket()
+        self.socket = await self.session.ws_connect(
+            "wss://openspeech.bytedance.com/api/v3/tts/bidirection",
+            headers=self._headers(), heartbeat=20, max_msg_size=128 * 1024,
+        )
+        await self.socket.send_bytes(make_bidirectional_frame(
+            self.START_CONNECTION))
+        await self._wait_for_event(self.CONNECTION_STARTED)
+        self.ready = True
+
+    async def warmup(self):
+        async with self.lock:
+            await self._ensure_connected()
+
+    async def close(self):
+        async with self.lock:
+            if self.ready and self.socket is not None and not self.socket.closed:
+                try:
+                    await self.socket.send_bytes(make_bidirectional_frame(
+                        self.FINISH_CONNECTION))
+                    await self._wait_for_event(self.CONNECTION_FINISHED,
+                                               timeout=2)
+                except (RuntimeError, asyncio.TimeoutError, ClientError):
+                    pass
+            await self._drop_socket()
+
+    async def synthesize(self, text, board, send_control):
+        received = 0
+        async with self.lock:
+            try:
+                await self._ensure_connected()
+                await send_control("tts_connected", reused=True)
+                session_id = str(uuid.uuid4())
+                start_request = {
+                    "user": {"uid": "desk-emoji"},
+                    "event": self.START_SESSION,
+                    "namespace": "BidirectionalTTS",
+                    "req_params": {
+                        "speaker": self.settings.voice,
+                        "audio_params": {
+                            "format": "pcm",
+                            "sample_rate": 8000,
+                            "speech_rate": 0,
+                            "loudness_rate": 0,
+                        },
+                    },
+                }
+                start_json = json.dumps(start_request, ensure_ascii=False)
+                await self.socket.send_bytes(make_bidirectional_frame(
+                    self.START_SESSION, start_json, session_id))
+                await self._wait_for_event(self.SESSION_STARTED)
+
+                task_request = {
+                    "user": {"uid": "desk-emoji"},
+                    "event": self.TASK_REQUEST,
+                    "namespace": "BidirectionalTTS",
+                    "req_params": {"text": text},
+                }
+                task_json = json.dumps(task_request, ensure_ascii=False)
+                await self.socket.send_bytes(make_bidirectional_frame(
+                    self.TASK_REQUEST, task_json, session_id))
+                await self.socket.send_bytes(make_bidirectional_frame(
+                    self.FINISH_SESSION, "{}", session_id))
+                await send_control("tts_request_sent")
+
+                while True:
+                    kind, event, _sequence, code, payload = \
+                        await self._receive_frame(60)
+                    if kind == 15 or event in (self.CONNECTION_FAILED,
+                                               self.SESSION_FAILED):
+                        detail = payload.decode("utf-8", errors="replace")
+                        raise RuntimeError(
+                            f"Volc TTS error {code or event}: {detail}")
+                    if kind == 11 and payload:
+                        if len(payload) & 1:
+                            raise ValueError("Odd-length PCM from Volc TTS")
+                        for start in range(0, len(payload), 8192):
+                            chunk = payload[start:start + 8192]
+                            await board.send_bytes(chunk)
+                            received += len(chunk)
+                    if event == self.SESSION_FINISHED:
+                        break
+            except asyncio.CancelledError:
+                await self._drop_socket()
+                raise
+            except (ValueError, RuntimeError, asyncio.TimeoutError,
+                    OSError, ClientError) as error:
+                await self._drop_socket()
+                raise TtsFailure(str(error), received > 0) from error
+        if received == 0:
+            raise TtsFailure("Volc bidirectional TTS returned zero PCM", False)
+        return received
+
+
 # 2026-09-18: Stream the first valid answer clause to the synthesis queue before DeepSeek finishes generating actions.
 async def generate_answer(session, settings, messages, queue, send_control):
     request = {
         "model": settings.model,
         "stream": True,
-        "max_tokens": 160,
+        # "max_tokens": 160,
+        # 2026-09-18: Match the firmware's one-sentence response budget so the
+        # answer and action JSON finish quickly without encouraging monologues.
+        "max_tokens": 112,
         "thinking": {"type": "disabled"},
         "response_format": {"type": "json_object"},
         "messages": messages,
@@ -306,6 +491,19 @@ async def synthesize_with_retry(session, settings, text, board, send_control):
             await asyncio.sleep(0.5 * (attempt + 1))
 
 
+# 2026-09-18: Prefer the warm bidirectional provider connection, but retain the
+# proven one-shot path when a reused connection fails before forwarding audio.
+async def synthesize_persistent_with_fallback(session, tts, settings, text,
+                                              board, send_control):
+    try:
+        return await tts.synthesize(text, board, send_control)
+    except TtsFailure as error:
+        if error.audio_sent:
+            raise
+        return await synthesize_with_retry(session, settings, text, board,
+                                           send_control)
+
+
 # 2026-09-18: One consumer starts TTS during SSE generation while the ESP32 holds only the gateway connection.
 async def consume_speech(session, settings, queue, board, send_control):
     total_audio = 0
@@ -315,6 +513,21 @@ async def consume_speech(session, settings, queue, board, send_control):
             break
         total_audio += await synthesize_with_retry(
             session, settings, phrase, board, send_control)
+    if total_audio == 0:
+        raise RuntimeError("No speakable audio was produced")
+
+
+# 2026-09-18: Consume early clauses through the process-wide TTS connection;
+# sequential Sessions preserve phrase order without repeating TLS handshakes.
+async def consume_speech_persistent(session, tts, settings, queue, board,
+                                    send_control):
+    total_audio = 0
+    while True:
+        phrase = await queue.get()
+        if phrase is None:
+            break
+        total_audio += await synthesize_persistent_with_fallback(
+            session, tts, settings, phrase, board, send_control)
     if total_audio == 0:
         raise RuntimeError("No speakable audio was produced")
 
@@ -364,11 +577,132 @@ async def chat(request):
     return board
 
 
+# 2026-09-18: Handle one request on a persistent board socket while sharing
+# process-wide provider transports with every previous and subsequent turn.
+async def process_chat_turn(board, payload, settings, session, tts):
+    if not isinstance(payload, str) or len(payload) > 24 * 1024:
+        raise ValueError("Invalid gateway request")
+    messages = request_messages(json.loads(payload))
+    queue = asyncio.Queue(maxsize=3)
+
+    async def send_control(kind, **fields):
+        await board.send_json({"type": kind, **fields})
+
+    consumer = asyncio.create_task(consume_speech_persistent(
+        session, tts, settings, queue, board, send_control))
+    try:
+        await generate_answer(session, settings, messages, queue,
+                              send_control)
+        await queue.put(None)
+        await consumer
+        await send_control("done")
+    finally:
+        if not consumer.done():
+            consumer.cancel()
+            await asyncio.gather(consumer, return_exceptions=True)
+
+
+# 2026-09-18: Keep the ESP32-to-gateway WebSocket open across conversation
+# turns. Individual provider errors end only the current request, not the warm
+# local connection used by the next request.
+async def persistent_chat(request):
+    settings = request.app["settings"]
+    authorization = request.headers.get("Authorization", "")
+    if not hmac.compare_digest(authorization,
+                               f"Bearer {settings.token}"):
+        raise web.HTTPUnauthorized()
+    board = web.WebSocketResponse(max_msg_size=32 * 1024, heartbeat=20)
+    await board.prepare(request)
+    try:
+        async for incoming in board:
+            if incoming.type != WSMsgType.TEXT:
+                if incoming.type in (WSMsgType.CLOSE, WSMsgType.CLOSED,
+                                     WSMsgType.ERROR):
+                    break
+                continue
+            try:
+                await process_chat_turn(
+                    board, incoming.data, settings,
+                    request.app["http_session"], request.app["tts"])
+            except (ValueError, RuntimeError, asyncio.TimeoutError, OSError,
+                    ClientError, json.JSONDecodeError, TtsFailure) as error:
+                if not board.closed:
+                    await board.send_json({"type": "error",
+                                           "message": str(error)[:180]})
+    finally:
+        await board.close()
+    return board
+
+
+# 2026-09-18: Warm DeepSeek DNS/TCP/TLS without generating tokens. The prompt
+# still accompanies every stateless chat request; only transport setup is moved
+# into the startup interval when the robot is not yet accepting speech.
+async def warm_deepseek(session, settings):
+    headers = {"Authorization": f"Bearer {settings.deepseek_key}"}
+    async with session.get(
+        "https://api.deepseek.com/chat/completions", headers=headers,
+        allow_redirects=False,
+    ) as response:
+        await response.read()
+
+
+# 2026-09-18: Create provider resources once per gateway process and prewarm
+# both cloud transports before the HTTP listener reports itself ready.
+async def start_provider_resources(app):
+    timeout = ClientTimeout(total=90, connect=10, sock_read=60)
+    connector = TCPConnector(limit=16, ttl_dns_cache=600,
+                             keepalive_timeout=60)
+    session = ClientSession(timeout=timeout, connector=connector)
+    tts = VolcBidirectionalTts(session, app["settings"])
+    app["http_session"] = session
+    app["tts"] = tts
+    results = await asyncio.gather(
+        warm_deepseek(session, app["settings"]), tts.warmup(),
+        return_exceptions=True)
+    if isinstance(results[0], Exception):
+        print(f"DeepSeek transport warmup failed: {results[0]}")
+    else:
+        # 2026-09-18: Make successful startup preparation observable without
+        # waiting for the first real conversation request.
+        print("DeepSeek transport warmup is ready")
+    if isinstance(results[1], Exception):
+        print(f"Volc TTS warmup failed: {results[1]}")
+    else:
+        # 2026-09-18: Confirm that later phrases can start a Session without a
+        # fresh physical WebSocket/TLS handshake.
+        print("Volc bidirectional TTS connection is ready")
+
+
+# 2026-09-18: Close persistent provider resources cleanly during gateway
+# shutdown so credentials and sockets are not left in half-open sessions.
+async def stop_provider_resources(app):
+    tts = app.get("tts")
+    if tts is not None:
+        await tts.close()
+    session = app.get("http_session")
+    if session is not None:
+        await session.close()
+
+
+# 2026-09-18: Expose app construction for protocol tests and route production
+# traffic through the persistent board/provider pipeline.
+def create_app(settings=None):
+    app = web.Application()
+    app["settings"] = settings or Settings.from_environment()
+    app.on_startup.append(start_provider_resources)
+    app.on_cleanup.append(stop_provider_resources)
+    app.router.add_get("/chat", persistent_chat)
+    return app
+
+
 # 2026-09-18: Bind locally by default; opt into LAN exposure only when the user sets GATEWAY_BIND.
 def main():
-    app = web.Application()
-    app["settings"] = Settings.from_environment()
-    app.router.add_get("/chat", chat)
+    # app = web.Application()
+    # app["settings"] = Settings.from_environment()
+    # app.router.add_get("/chat", chat)
+    # 2026-09-18: Start the persistent provider application instead of
+    # rebuilding its cloud transports inside every board request.
+    app = create_app()
     web.run_app(app, host=os.getenv("GATEWAY_BIND", "127.0.0.1"),
                 port=int(os.getenv("GATEWAY_PORT", "8765")))
 

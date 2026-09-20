@@ -10,8 +10,9 @@
 // 2026-09-17: Declare the streaming LLM-to-TTS bridge through direct dependencies instead of sensor.h transitive includes.
 #include "llm.h"
 #include "tts.h"
-// 2026-09-18: Enable an optional single-socket LLM/TTS gateway while retaining the original direct-provider path.
-#include "gateway_client.h"
+// 2026-09-18: Temporarily restore the standalone board-direct pipeline; keep
+// the optional gateway include as a comment for a future server deployment.
+// #include "gateway_client.h"
 // 2026-09-17: Print buffered per-stage conversation latency after each measured turn.
 #include "latency_trace.h"
 // 2026-09-11: Add local wake-word control so a voice trigger can replace the unavailable gesture sensor.
@@ -25,8 +26,9 @@ WifiClient wifiClient;
 AsrClient asrClient;
 TtsClient ttsClient;
 LLM llm;
-// 2026-09-18: Keep gateway state available across turns without opening a connection until configured.
-GatewayClient gatewayClient;
+// 2026-09-18: Temporarily disable the gateway object so no background socket
+// or connection timeout can affect standalone conversations.
+// GatewayClient gatewayClient;
 
 // 2026-09-17: Bridge punctuation-complete DeepSeek answer phrases into the asynchronous TTS sentence queue.
 bool enqueue_streamed_tts_sentence(const String &sentence, void *context) {
@@ -36,11 +38,20 @@ bool enqueue_streamed_tts_sentence(const String &sentence, void *context) {
   return static_cast<TtsClient *>(context)->enqueueSentence(sentence);
 }
 
-// 2026-09-17: Start queued TTS as soon as the validated DeepSeek response releases its TLS connection.
+// 2026-09-18: Release the queued phrases only after DeepSeek has closed its
+// TLS stream; simultaneous provider TLS connections exhaust board resources.
 void release_streamed_tts(void *context) {
   if (context == nullptr ||
       !static_cast<TtsClient *>(context)->releaseSentenceStream()) {
     log_error("Unable to release streamed TTS");
+  }
+}
+
+// 2026-09-18: A failed DeepSeek TLS attempt may reclaim the optional warm TTS
+// socket before retrying; direct one-shot synthesis remains the fallback.
+void release_persistent_tts_for_llm_retry(void *context) {
+  if (context != nullptr) {
+    static_cast<TtsClient *>(context)->releasePersistentConnection();
   }
 }
 
@@ -50,6 +61,9 @@ void websocket_loop() {
     // 2026-09-17: Pump both sockets without the former default 100 ms delay per client.
     asrClient.loop(0);
     ttsClient.loop(0);
+    // 2026-09-18: Restore board-direct operation; retain the former gateway
+    // pump as a comment rather than deleting the experimental implementation.
+    // gatewayClient.loop();
 }
 
 void setup() {
@@ -66,6 +80,8 @@ void setup() {
   setup_face_tracking();
   wifiClient.setup_wifi();
   wifiClient.setup_udp();
+  // 2026-09-18: Do not open a gateway socket while standalone mode is active.
+  // gatewayClient.warmup();
   // 2026-09-11: Preserve the former fixed hardware omission; setup_sensor() now follows hardware_config.h and fails open.
   // setup_sensor();
   setup_sensor();
@@ -73,6 +89,13 @@ void setup() {
   // 2026-09-11: Start local WakeNet after the shared microphone I2S input has been initialized.
   setup_wake_word();
   emoji_init();
+  // 2026-09-18: Disable startup TTS warmup while running board-direct mode.
+  // It blocked setup for about 11 seconds and was immediately released when
+  // the internal heap could not retain a second TLS connection. Keep the old
+  // call preserved for a future memory-qualified experiment.
+#if 0
+  ttsClient.warmupPersistentConnection();
+#endif
   log_info("Desk-Emoji is Ready.");
   last_time = millis();
 }
@@ -107,6 +130,9 @@ void loop() {
       // eye_happy();
       // 2026-09-18: Indicate that the microphone is listening before starting the ASR session.
       eye_listening();
+      // 2026-09-18: Apply the same internal-heap guard before ASR TLS; the
+      // persistent TTS socket remains open when both providers can coexist.
+      ttsClient.prepareForCloudRequest();
       if (!asrClient.ASR()) {
         log_error("ASR Failed!");
       }
@@ -127,7 +153,9 @@ void loop() {
 
       // Thinking...
       set_led(COLOR_YELLOW, 10);
-      // 2026-09-18: Prefer the cloud pipeline when configured; a failure before audio safely falls back to the direct providers.
+      // 2026-09-18: Temporarily disable gateway takeover and restore the
+      // previous direct DeepSeek-to-TTS path without deleting gateway code.
+#if 0
       bool response_handled = false;
       if (gatewayClient.enabled()) {
         const GatewayResult gateway_result =
@@ -145,17 +173,23 @@ void loop() {
           }
         }
       }
-      if (!response_handled) {
+#endif
+      // if (!response_handled) {
       // llm.chat(asrClient.asrResult());
       // websocket_loop();
-      // 2026-09-18: Prepare TTS before DeepSeek, then enqueue one validated complete answer and release it before history saving.
+      // 2026-09-18: Queue the complete short DeepSeek answer, close its TLS,
+      // then reuse a warm V3 TTS Session or fall back to one-shot synthesis.
+      // 2026-09-18: Keep the warm TTS socket only when the remaining internal
+      // heap can still support the DeepSeek TLS handshake.
+      ttsClient.prepareForCloudRequest();
       const bool streaming_tts_ready = ttsClient.beginSentenceStream();
       const LlmSentenceCallback sentence_callback =
           streaming_tts_ready ? enqueue_streamed_tts_sentence : nullptr;
       llm.chat(asrClient.asrResult(), sentence_callback,
                streaming_tts_ready ? &ttsClient : nullptr,
                streaming_tts_ready ? release_streamed_tts : nullptr,
-               streaming_tts_ready ? &ttsClient : nullptr);
+               streaming_tts_ready ? &ttsClient : nullptr,
+               release_persistent_tts_for_llm_retry, &ttsClient);
       async_sequent_act(llm.actions());
 
       // Text-to-Speech
@@ -174,8 +208,12 @@ void loop() {
       } else if (!ttsClient.TTS(llm.answer())) {
         log_error("TTS Failed!");
       }
-      // 2026-09-18: End the original direct-provider branch after gateway success or fallback handling.
-      }
+      // 2026-09-18: Persist the completed direct reply only after the critical
+      // first-audio/playback path has finished.
+      llm.finishDirectReply(asrClient.asrResult());
+      // 2026-09-18: The direct-provider body no longer needs the gateway
+      // fallback wrapper while standalone mode is active.
+      // }
       websocket_loop();
       // 2026-09-17: Serial output is deferred until TTS/playback has completed so it cannot inflate measured stages.
       latency_trace_dump();

@@ -1,3 +1,6 @@
+#if 0
+// 2026-09-18: Keep the gateway API out of the board-direct firmware build;
+// the complete historical implementation remains below for reference.
 #ifndef GatewayClient_h
 #define GatewayClient_h
 
@@ -33,9 +36,17 @@ enum class GatewayResult : uint8_t {
 class GatewayClient {
  public:
   bool enabled() const;
+  // 2026-09-18: Start and optionally warm the LAN WebSocket before the robot
+  // accepts speech, then pump it from the ordinary firmware loop.
+  void begin();
+  bool warmup(unsigned long timeout_ms = 3000UL);
+  void loop();
   GatewayResult chat(const String &question, LLM &llm, TtsClient &tts);
 
  private:
+  // 2026-09-18: Open the physical socket once; WebSocketsClient handles idle
+  // reconnects without rebuilding the endpoint for every conversation.
+  void startSocket();
   void onEvent(WStype_t type, uint8_t *payload, size_t length);
 
   WebSocketsClient socket_;
@@ -48,6 +59,12 @@ class GatewayClient {
   bool reply_received_ = false;
   bool remote_done_ = false;
   bool failed_ = false;
+  // 2026-09-18: Separate socket lifetime from one active chat request so an
+  // expected idle disconnect does not mark a future request as failed.
+  bool event_handler_ready_ = false;
+  bool socket_started_ = false;
+  bool request_active_ = false;
 };
 
 #endif
+#endif  // 2026-09-18: gateway experiment disabled for board-direct mode.

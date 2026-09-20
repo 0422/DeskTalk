@@ -6,8 +6,9 @@ import struct
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from server import (TtsFailure, first_clause, generate_answer, parse_volc_frame,
-                    partial_answer, request_messages, synthesize_with_retry)
+from server import (TtsFailure, first_clause, generate_answer,
+                    make_bidirectional_frame, parse_volc_frame, partial_answer,
+                    request_messages, synthesize_with_retry)
 
 
 class FakeContent:
@@ -58,10 +59,22 @@ class GatewayProtocolTests(unittest.IsolatedAsyncioTestCase):
 
     def test_first_clause_avoids_tiny_requests(self):
         self.assertEqual(first_clause("嘿嘿，这个我熟！"), "")
+        # 2026-09-18: A useful first comma now starts TTS while tiny filler
+        # commas continue accumulating into a natural clause.
+        self.assertEqual(first_clause("苹果我咬不动，但后面还有内容。"),
+                         "苹果我咬不动，")
+        self.assertEqual(first_clause("对呀，后面继续说明，内容还在生成。"),
+                         "对呀，后面继续说明，")
+        # self.assertEqual(first_clause("这是一个完整的自然短句，可以先念出来！后面还有。"),
+        #                  "这是一个完整的自然短句，可以先念出来！")
+        # 2026-09-18: The first eligible comma now intentionally wins over the
+        # later sentence-ending punctuation.
         self.assertEqual(first_clause("这是一个完整的自然短句，可以先念出来！后面还有。"),
-                         "这是一个完整的自然短句，可以先念出来！")
+                         "这是一个完整的自然短句，")
+        # self.assertEqual(first_clause("请记住“每天一苹果，医生远离我”，这句话很好听！接下来再说。"),
+        #                  "请记住“每天一苹果，医生远离我”，这句话很好听！")
         self.assertEqual(first_clause("请记住“每天一苹果，医生远离我”，这句话很好听！接下来再说。"),
-                         "请记住“每天一苹果，医生远离我”，这句话很好听！")
+                         "请记住“每天一苹果，医生远离我”，")
 
     def test_volc_audio_and_event_frames(self):
         audio = b"\x00\x00\x01\x00"
@@ -72,6 +85,22 @@ class GatewayProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_volc_frame(event_frame), (9, 152, None, None, b""))
         with self.assertRaises(ValueError):
             parse_volc_frame(frame[:-1])
+
+    # 2026-09-18: Verify the reusable V3 client envelope independently from
+    # live credentials and provider availability.
+    def test_bidirectional_client_frame(self):
+        connection = make_bidirectional_frame(1)
+        self.assertEqual(connection[:8], bytes((0x11, 0x14, 0x10, 0,
+                                                0, 0, 0, 1)))
+        self.assertEqual(struct.unpack_from(">I", connection, 8)[0], 2)
+        self.assertEqual(connection[12:], b"{}")
+
+        session = make_bidirectional_frame(100, "{}", "sid")
+        self.assertEqual(struct.unpack_from(">i", session, 4)[0], 100)
+        self.assertEqual(struct.unpack_from(">I", session, 8)[0], 3)
+        self.assertEqual(session[12:15], b"sid")
+        self.assertEqual(struct.unpack_from(">I", session, 15)[0], 2)
+        self.assertEqual(session[19:], b"{}")
 
     def test_history_roles_are_validated(self):
         request = {"question": "你好", "system": "简短回答", "history": [

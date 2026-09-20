@@ -1,6 +1,7 @@
 #include "asr.h"
 
 #include <algorithm>
+#include <esp_heap_caps.h>
 #include <new>
 
 #include "volc_speech_protocol.h"
@@ -17,6 +18,39 @@ constexpr uint8_t kSerializationJson = 0x01;
 constexpr uint8_t kSerializationNone = 0x00;
 constexpr uint8_t kAsrMaxConnectAttempts = 3;
 constexpr unsigned long kAsrConnectTimeoutMs = 7000;
+
+// 2026-09-18: Capture ASR TLS and microphone-buffer pressure in the same
+// format as the LLM/TTS diagnostics before deciding on an ESP-IDF migration.
+constexpr bool kEnableAsrMemoryDiagnostics = true;
+
+void logAsrMemoryDiagnostics(const char *stage) {
+  if (!kEnableAsrMemoryDiagnostics) {
+    return;
+  }
+  const size_t internal_free =
+      heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t internal_min =
+      heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t internal_largest =
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t dma_free = heap_caps_get_free_size(MALLOC_CAP_DMA);
+  const size_t psram_free = psramFound()
+                                ? heap_caps_get_free_size(
+                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                                : 0;
+  log_info(
+      "MEM ASR %s: heap=%u heap_min=%u max=%u internal=%u "
+      "internal_min=%u internal_max=%u dma=%u psram=%u",
+      stage == nullptr ? "unknown" : stage,
+      static_cast<unsigned int>(ESP.getFreeHeap()),
+      static_cast<unsigned int>(ESP.getMinFreeHeap()),
+      static_cast<unsigned int>(ESP.getMaxAllocHeap()),
+      static_cast<unsigned int>(internal_free),
+      static_cast<unsigned int>(internal_min),
+      static_cast<unsigned int>(internal_largest),
+      static_cast<unsigned int>(dma_free),
+      static_cast<unsigned int>(psram_free));
+}
 
 }  // namespace
 
@@ -44,8 +78,12 @@ void AsrClient::connect() {
     const String request_id = generate_uuid();
     const String headers =
         volc_speech::make_auth_headers(resource_id, request_id, false);
+    // 2026-09-18: Measure the actual ASR TLS allocation rather than inferring
+    // it from the post-ASR heap visible to the main conversation loop.
+    logAsrMemoryDiagnostics("before-beginSSL");
     webSocket.beginSSL(host, 443, asr_url);
     webSocket.setExtraHeaders(headers.c_str());
+    logAsrMemoryDiagnostics("after-beginSSL");
     webSocket.setReconnectInterval(0);
     log_info("ASR 2.0 WebSocket connect attempt %u/%u", attempt,
              kAsrMaxConnectAttempts);
@@ -69,13 +107,18 @@ void AsrClient::connect() {
   webSocket.setReconnectInterval(UINT32_MAX);
   if (!webSocket.isConnected()) {
     log_error("ASR 2.0 WebSocket connection timed out");
+    logAsrMemoryDiagnostics("connect-failed");
   }
 }
 
 void AsrClient::disconnect() {
+  // 2026-09-18: Confirm that closing ASR returns its TLS buffers and restores
+  // the largest contiguous internal allocation.
+  logAsrMemoryDiagnostics("before-disconnect");
   if (webSocket.isConnected()) {
     webSocket.disconnect();
   }
+  logAsrMemoryDiagnostics("after-disconnect");
 }
 
 void AsrClient::handleWebSocketEvent(WStype_t type, uint8_t *payload,
@@ -83,6 +126,8 @@ void AsrClient::handleWebSocketEvent(WStype_t type, uint8_t *payload,
   switch (type) {
     case WStype_CONNECTED:
       log_info("ASR 2.0 WebSocket connected");
+      // 2026-09-18: Record the ASR post-handshake low-water mark.
+      logAsrMemoryDiagnostics("connected");
       break;
     case WStype_DISCONNECTED:
       if (request_active && !final_response_received) {
@@ -194,6 +239,7 @@ bool AsrClient::sendFullRequest() {
   const size_t frame_length = 8 + json.length();
   uint8_t *frame = new (std::nothrow) uint8_t[frame_length];
   if (frame == nullptr) {
+    logAsrMemoryDiagnostics("request-allocation-failed");
     log_error("ASR request allocation failed");
     return false;
   }
@@ -218,6 +264,7 @@ bool AsrClient::sendAudioRequest(const uint8_t *data, size_t length,
   const size_t frame_length = 8 + length;
   uint8_t *frame = new (std::nothrow) uint8_t[frame_length];
   if (frame == nullptr) {
+    logAsrMemoryDiagnostics("audio-frame-allocation-failed");
     log_error("ASR audio frame allocation failed");
     return false;
   }
@@ -268,10 +315,14 @@ bool AsrClient::ASR() {
   size_t samples_recorded = 0;
   int16_t *buffer = new (std::nothrow) int16_t[BUFFER_SIZE];
   if (buffer == nullptr) {
+    logAsrMemoryDiagnostics("microphone-buffer-allocation-failed");
     log_error("ASR audio buffer allocation failed");
     request_active = false;
     return false;
   }
+  // 2026-09-18: Isolate the fixed microphone buffer from TLS and temporary
+  // per-frame request allocations.
+  logAsrMemoryDiagnostics("after-microphone-buffer-allocation");
 
   unsigned long silence_started_at = 0;
   bool is_silent = false;
@@ -337,6 +388,11 @@ bool AsrClient::ASR() {
       }
     }
 
+    // 2026-09-18: Record the local speech-end decision once. The trace layer
+    // ignores repeats if a provider result and the microphone endpoint race.
+    if (is_last && speech_started) {
+      latency_trace_mark(LatencyEvent::VAD_END);
+    }
     if (!sendAudioRequest(reinterpret_cast<const uint8_t *>(buffer),
                           samples_to_read * sizeof(int16_t), is_last)) {
       request_failed = true;
@@ -360,12 +416,17 @@ bool AsrClient::ASR() {
     }
   }
 
+  logAsrMemoryDiagnostics("before-microphone-buffer-free");
   delete[] buffer;
+  logAsrMemoryDiagnostics("after-microphone-buffer-free");
   if (!sent_last_frame || request_failed) {
     request_active = false;
     return false;
   }
   const bool success = waitForFinalResponse();
+  // 2026-09-18: Capture ASR state after the final result but before the main
+  // loop explicitly closes its WebSocket.
+  logAsrMemoryDiagnostics("after-final-response");
   request_active = false;
   return success;
 }

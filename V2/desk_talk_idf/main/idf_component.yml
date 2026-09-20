@@ -1,0 +1,12 @@
+# 2026-09-19: Pin official managed components needed by native WebSocket cloud clients and ESP-SR wake-word processing.
+dependencies:
+  idf:
+    # 2026-09-19: ESP-SR 2.5.4 resolves esp-dl 3.3.11, whose JPEG driver dependencies require ESP-IDF 5.3 or newer.
+    version: ">=5.3,<5.4"
+  espressif/esp_websocket_client:
+    version: "1.8.0"
+  espressif/esp-sr:
+    version: "2.5.4"
+  # 2026-09-19: Use Espressif's native RMT-backed driver for the V1 GPIO48 WS2812 status LED.
+  espressif/led_strip:
+    version: "2.5.5"

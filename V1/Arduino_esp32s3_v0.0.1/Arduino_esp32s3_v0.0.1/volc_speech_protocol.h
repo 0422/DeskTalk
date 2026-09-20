@@ -13,7 +13,8 @@ bool read_i32_be(const uint8_t *data, size_t length, size_t &offset,
                  int32_t &value);
 
 String make_auth_headers(const char *resource_id, const String &request_id,
-                         bool text_to_speech);
+                         bool text_to_speech,
+                         bool use_connect_id = false);
 
 bool gzip_compress(const uint8_t *input, size_t input_length,
                    uint8_t **output, size_t *output_length);

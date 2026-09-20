@@ -17,10 +17,15 @@
 #define DEEPSEEK_API_KEY ""
 #endif
 
-// 2026-09-18: Deliver the complete validated answer to TTS after DeepSeek SSE reaches [DONE].
+// 2026-09-18: Deliver punctuation-complete answer phrases while DeepSeek SSE
+// continues; final JSON validation remains responsible for actions/history.
 using LlmSentenceCallback = bool (*)(const String &sentence, void *context);
-// 2026-09-17: Signal when DeepSeek TLS is closed and the complete structured reply is safe to speak.
+// 2026-09-18: Signal that DeepSeek has closed so queued phrases can use the
+// board's TLS resources without competing with the LLM connection.
 using LlmResponseReadyCallback = void (*)(void *context);
+// 2026-09-18: Let a retry release optional warm cloud sockets when the first
+// DeepSeek TLS attempt indicates internal-resource pressure.
+using LlmTransportRetryCallback = void (*)(void *context);
 
 class LLM {
 
@@ -34,12 +39,21 @@ public:
                 LlmSentenceCallback sentence_callback = nullptr,
                 void *sentence_context = nullptr,
                 LlmResponseReadyCallback response_ready_callback = nullptr,
-                void *response_ready_context = nullptr);
+                void *response_ready_context = nullptr,
+                LlmTransportRetryCallback transport_retry_callback = nullptr,
+                void *transport_retry_context = nullptr);
+    // 2026-09-18: These gateway-only APIs are retained but excluded from the
+    // board-direct build; the gateway experiment is no longer used.
+#if 0
     // 2026-09-18: Share the existing persona and bounded history with the optional SSE/TTS gateway.
     String gatewayRequest(const String &question);
     bool acceptGatewayReply(const String &question, const String &response);
     // 2026-09-18: Defer flash writes until gateway audio finishes to keep WebSocket PCM reception responsive.
     void finishGatewayReply(const String &question);
+#endif
+    // 2026-09-18: Move direct-mode serial output and FFat history writes after
+    // speech playback so neither competes with the first TTS handshake.
+    void finishDirectReply(const String &question);
     void stream_chat(String question);
 
 private:
@@ -51,7 +65,11 @@ private:
     const char* HISTORY_FILE = "/chat_history.json";
     // const uint8_t MAX_HISTORY_ROUNDS = 10;
     // 2026-09-18: Keep enough conversational context while reducing DeepSeek prompt upload and prefill latency.
-    const uint8_t MAX_HISTORY_ROUNDS = 6;
+    // const uint8_t MAX_HISTORY_ROUNDS = 6;
+    // const uint8_t MAX_HISTORY_ROUNDS = 3;
+    // 2026-09-18: Keep the immediately preceding two turns while reducing
+    // DeepSeek request upload and prefix-processing work for direct mode.
+    const uint8_t MAX_HISTORY_ROUNDS = 2;
     const size_t MAX_HISTORY_BYTES = 16 * 1024;
     const char* ROLE_PROMPT = R"(
 你是一个名为“Desk-Emoji”的可爱桌面机器人，性格幽默搞笑，1岁大，充满童趣和好奇心。
@@ -80,6 +98,8 @@ Head: head_left, head_right, head_up, head_down, head_nod, head_shake, head_roll
 - Match actions to emotional content
 - Head_nod = affirmation, head_shake = negation
 - Responses: 1-2 short sentences in Chinese, no more than 60 Chinese characters
+- 2026-09-18 length override: Respond with exactly one sentence of 20-35 Chinese characters
+- Answer directly; do not add an opening, follow-up question, extra reminder, or summary
 - Responses should be creative and humorous
 - Each response should be different
 
@@ -87,6 +107,21 @@ Head: head_left, head_right, head_up, head_down, head_nod, head_shake, head_roll
 Answer the user's latest message while using the previous messages as context.
 )";
 
+    // 2026-09-18: Use a compact answer-only contract in direct mode. Actions
+    // are selected locally so the board can close DeepSeek as soon as the
+    // complete answer string arrives instead of waiting for JSON action tokens.
+    const char* FAST_LLM_PROMPT = R"(
+Return exactly one JSON object in this form: {"answer":"reply"}.
+Reply directly in the user's language with one short sentence.
+For Chinese, use 12-24 Chinese characters when the question allows it.
+Do not add an opening filler, follow-up question, reminder, or summary.
+Keep the Desk-Emoji personality concise, warm, and lightly humorous.
+)";
+
+    // 2026-09-18: Preassemble the immutable system prompt once during global
+    // object initialization; the completed text is still sent on every
+    // stateless DeepSeek request as required by the API.
+    String system_prompt = "";
     String llm_response = "";
     String llm_answer = "";
     String llm_actions = "";

@@ -1,0 +1,14 @@
+# 2026-09-19: Migrate the V1-tested 16 MB N16R8 partition layout while preserving the ESP-SR model offset.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+# 2026-09-19: Keep the former two-slot OTA layout inactive because the complete firmware exceeded each 3 MB slot.
+# app0,   app,  ota_0,   0x10000,  0x300000,
+# app1,   app,  ota_1,   0x310000, 0x300000,
+# 2026-09-19: Retain one 6 MB factory application slot for the migrated conversation and ESP-SR firmware.
+app0,     app,  factory, 0x10000,  0x600000,
+# 2026-09-19: Reserve 3 MB for combined wn9_hiesp and mn7_en assets; retain 6.75 MB for application data.
+spiffs,   data, spiffs,  0x610000, 0x6C0000,
+fr,       data,        , 0xCD0000, 0x20000,
+model,    data, spiffs,  0xCF0000, 0x300000,
+coredump, data, coredump,0xFF0000, 0x10000,

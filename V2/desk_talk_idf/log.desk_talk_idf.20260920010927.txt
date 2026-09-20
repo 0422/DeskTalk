@@ -1,0 +1,169 @@
+[0;32mI (138496) asr: Final result: [0m
+[0;33mW (138496) conversation: No speech recognized; returning to wake word[0m
+[0;32mI (138496) memory: MEM ASR before-disconnect: internal=31523 internal_min=71 internal_max=15872 dma=23735 dma_max=15872 psram=8250896 psram_max=4849664 psram_total=8388608[0m
+[0;33mW (138526) transport_ws: esp_transport_ws_poll_connection_closed: unexpected data readable on socket=55[0m
+[0;33mW (138526) websocket_client: Connection terminated while waiting for clean TCP close[0m
+[0;32mI (138536) memory: MEM ASR after-disconnect: internal=38099 internal_min=71 internal_max=15872 dma=30311 dma_max=15872 psram=8270632 psram_max=4849664 psram_total=8388608[0m
+[0;32mI (138546) latency: LAT,session=7,event=TURN_START,time_us=121838871,step_ms=0.000,total_ms=0.000[0m
+[0;32mI (138556) latency: LAT,session=7,event=AUDIO_UPLOAD_DONE,time_us=137001226,step_ms=15162.355,total_ms=15162.355[0m
+[0;32mI (138566) latency: LAT,session=7,event=ASR_FINAL,time_us=137158021,step_ms=156.795,total_ms=15319.150[0m
+[0;32mI (138576) latency: LAT_SUMMARY,session=7,turn=followup,outcome=asr_no_result,speech_to_i2s_est_ms=NA,endpoint_to_i2s_ms=NA,turn_to_i2s_ms=NA,asr_retries=0,llm_retries=0,tts_retries=0,stages_valid=0[0m
+[0;32mI (138596) latency: LAT_STAGE,session=7,stage=endpoint_wait,ms=NA[0m
+[0;32mI (138606) latency: LAT_STAGE,session=7,stage=asr,ms=NA[0m
+[0;32mI (138616) latency: LAT_STAGE,session=7,stage=handoff,ms=NA[0m
+[0;32mI (138616) latency: LAT_STAGE,session=7,stage=llm_first_content,ms=NA[0m
+[0;32mI (138626) latency: LAT_STAGE,session=7,stage=first_sentence,ms=NA[0m
+[0;32mI (138636) latency: LAT_STAGE,session=7,stage=tts_prepare,ms=NA[0m
+[0;32mI (138636) latency: LAT_STAGE,session=7,stage=tts_first_audio,ms=NA[0m
+[0;32mI (138646) latency: LAT_STAGE,session=7,stage=playback_queue,ms=NA[0m
+[0;32mI (138656) latency: LAT_STAGE,session=7,stage=i2s_write,ms=NA[0m
+Build fst from commands.
+Quantized MultiNet7:rnnt_ctc_2.0, name:mn7_en, (Sep 17 2026 04:41:33)
+Quantized MultiNet7 search method: 2, time out:6.0 s
+Build fst from commands.
+[0;32mI (139616) AFE_CONFIG: Set WakeNet Model: wn9_hiesp[0m
+MC Quantized wakenet9: wakeNet9_v1h24_Hi,ESP_3_0.63_0.635, tigger:v4, mode:0, p:0, (Sep 17 2026 04:41:33)
+[0;32mI (139656) AFE: AFE Version: (1MIC_V251128)[0m
+[0;32mI (139656) AFE: Input PCM Config: total 1 channels(1 microphone, 0 playback), sample rate:16000[0m
+[0;32mI (139666) AFE: AFE Pipeline: [input] -> |VAD(WebRTC)| -> |WakeNet(wn9_hiesp,)| -> [output][0m
+[0;32mI (139676) wake_word: WakeNet/MultiNet ready: wn9_hiesp, mn7_en (chunk=512)[0m
+[0;32mI (141326) wake_word: Microphone amplitude: average=11 peak=35[0m
+[0;32mI (143376) wake_word: Microphone amplitude: average=7 peak=18[0m
+[0;32mI (145416) wake_word: Microphone amplitude: average=8 peak=21[0m
+[0;32mI (147466) wake_word: Microphone amplitude: average=9 peak=30[0m
+[0;32mI (149576) wake_word: Microphone amplitude: average=8 peak=24[0m
+[0;32mI (151616) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (153666) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (155716) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (157756) wake_word: Microphone amplitude: average=8 peak=29[0m
+[0;32mI (159806) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (161846) wake_word: Microphone amplitude: average=7 peak=24[0m
+[0;32mI (163896) wake_word: Microphone amplitude: average=7 peak=14[0m
+[0;32mI (165946) wake_word: Microphone amplitude: average=10 peak=40[0m
+[0;32mI (167986) wake_word: Microphone amplitude: average=6 peak=14[0m
+[0;32mI (170036) wake_word: Microphone amplitude: average=7 peak=17[0m
+[0;32mI (172076) wake_word: Microphone amplitude: average=8 peak=22[0m
+[0;32mI (174126) wake_word: Microphone amplitude: average=8 peak=28[0m
+[0;32mI (176176) wake_word: Microphone amplitude: average=9 peak=26[0m
+[0;32mI (178216) wake_word: Microphone amplitude: average=8 peak=22[0m
+[0;32mI (180266) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (182306) wake_word: Microphone amplitude: average=11 peak=38[0m
+[0;32mI (184356) wake_word: Microphone amplitude: average=8 peak=21[0m
+[0;32mI (186406) wake_word: Microphone amplitude: average=7 peak=12[0m
+[0;32mI (188446) wake_word: Microphone amplitude: average=6 peak=17[0m
+[0;32mI (190496) wake_word: Microphone amplitude: average=8 peak=22[0m
+[0;32mI (192536) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (194586) wake_word: Microphone amplitude: average=10 peak=32[0m
+[0;32mI (196636) wake_word: Microphone amplitude: average=8 peak=38[0m
+[0;32mI (198676) wake_word: Microphone amplitude: average=9 peak=48[0m
+[0;32mI (200726) wake_word: Microphone amplitude: average=6 peak=11[0m
+[0;32mI (202766) wake_word: Microphone amplitude: average=8 peak=21[0m
+[0;32mI (204816) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (206866) wake_word: Microphone amplitude: average=6 peak=15[0m
+[0;32mI (208906) wake_word: Microphone amplitude: average=9 peak=22[0m
+[0;32mI (210956) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (213066) wake_word: Microphone amplitude: average=8 peak=28[0m
+[0;32mI (215106) wake_word: Microphone amplitude: average=6 peak=31[0m
+[0;32mI (217156) wake_word: Microphone amplitude: average=6 peak=9[0m
+[0;32mI (219206) wake_word: Microphone amplitude: average=7 peak=15[0m
+[0;32mI (221246) wake_word: Microphone amplitude: average=8 peak=31[0m
+[0;32mI (223296) wake_word: Microphone amplitude: average=7 peak=24[0m
+[0;32mI (225336) wake_word: Microphone amplitude: average=7 peak=27[0m
+[0;32mI (227386) wake_word: Microphone amplitude: average=7 peak=14[0m
+[0;32mI (229436) wake_word: Microphone amplitude: average=7 peak=17[0m
+[0;32mI (231476) wake_word: Microphone amplitude: average=8 peak=20[0m
+[0;32mI (233526) wake_word: Microphone amplitude: average=8 peak=20[0m
+[0;32mI (235566) wake_word: Microphone amplitude: average=7 peak=18[0m
+[0;32mI (237616) wake_word: Microphone amplitude: average=7 peak=22[0m
+[0;32mI (239666) wake_word: Microphone amplitude: average=7 peak=15[0m
+[0;32mI (241706) wake_word: Microphone amplitude: average=6 peak=10[0m
+[0;32mI (243756) wake_word: Microphone amplitude: average=7 peak=37[0m
+[0;32mI (245796) wake_word: Microphone amplitude: average=8 peak=28[0m
+[0;32mI (247846) wake_word: Microphone amplitude: average=8 peak=16[0m
+[0;32mI (249896) wake_word: Microphone amplitude: average=10 peak=26[0m
+[0;32mI (251936) wake_word: Microphone amplitude: average=9 peak=26[0m
+[0;32mI (253986) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (256026) wake_word: Microphone amplitude: average=7 peak=26[0m
+[0;32mI (258076) wake_word: Microphone amplitude: average=8 peak=24[0m
+[0;32mI (260126) wake_word: Microphone amplitude: average=6 peak=15[0m
+[0;32mI (262166) wake_word: Microphone amplitude: average=6 peak=16[0m
+[0;32mI (264216) wake_word: Microphone amplitude: average=8 peak=22[0m
+[0;32mI (266256) wake_word: Microphone amplitude: average=8 peak=26[0m
+[0;32mI (268306) wake_word: Microphone amplitude: average=6 peak=19[0m
+[0;32mI (270356) wake_word: Microphone amplitude: average=8 peak=28[0m
+[0;32mI (272396) wake_word: Microphone amplitude: average=7 peak=22[0m
+[0;32mI (274446) wake_word: Microphone amplitude: average=6 peak=11[0m
+[0;32mI (276486) wake_word: Microphone amplitude: average=6 peak=21[0m
+[0;32mI (278596) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (280646) wake_word: Microphone amplitude: average=8 peak=16[0m
+[0;32mI (282686) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (284736) wake_word: Microphone amplitude: average=10 peak=33[0m
+[0;32mI (286786) wake_word: Microphone amplitude: average=8 peak=21[0m
+[0;32mI (288826) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (290876) wake_word: Microphone amplitude: average=7 peak=19[0m
+[0;32mI (292926) wake_word: Microphone amplitude: average=7 peak=14[0m
+[0;32mI (294966) wake_word: Microphone amplitude: average=7 peak=18[0m
+[0;32mI (297016) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (299056) wake_word: Microphone amplitude: average=8 peak=15[0m
+[0;32mI (301106) wake_word: Microphone amplitude: average=8 peak=24[0m
+[0;32mI (303156) wake_word: Microphone amplitude: average=8 peak=36[0m
+[0;32mI (305196) wake_word: Microphone amplitude: average=6 peak=11[0m
+[0;32mI (307246) wake_word: Microphone amplitude: average=6 peak=14[0m
+[0;32mI (309286) wake_word: Microphone amplitude: average=8 peak=20[0m
+[0;32mI (311336) wake_word: Microphone amplitude: average=8 peak=20[0m
+[0;32mI (313386) wake_word: Microphone amplitude: average=6 peak=14[0m
+[0;32mI (315426) wake_word: Microphone amplitude: average=7 peak=18[0m
+[0;32mI (317476) wake_word: Microphone amplitude: average=7 peak=15[0m
+[0;32mI (319516) wake_word: Microphone amplitude: average=6 peak=14[0m
+[0;32mI (321566) wake_word: Microphone amplitude: average=8 peak=27[0m
+[0;32mI (323616) wake_word: Microphone amplitude: average=8 peak=21[0m
+[0;32mI (325656) wake_word: Microphone amplitude: average=7 peak=22[0m
+[0;32mI (327706) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (329746) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (331796) wake_word: Microphone amplitude: average=9 peak=24[0m
+[0;32mI (333846) wake_word: Microphone amplitude: average=8 peak=27[0m
+[0;32mI (335886) wake_word: Microphone amplitude: average=7 peak=21[0m
+[0;32mI (337936) wake_word: Microphone amplitude: average=7 peak=23[0m
+[0;32mI (339976) wake_word: Microphone amplitude: average=6 peak=9[0m
+[0;32mI (342026) wake_word: Microphone amplitude: average=6 peak=11[0m
+[0;32mI (344136) wake_word: Microphone amplitude: average=6 peak=15[0m
+[0;32mI (346176) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (348226) wake_word: Microphone amplitude: average=9 peak=29[0m
+[0;32mI (350276) wake_word: Microphone amplitude: average=6 peak=24[0m
+[0;32mI (352316) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (354366) wake_word: Microphone amplitude: average=8 peak=25[0m
+[0;32mI (356406) wake_word: Microphone amplitude: average=10 peak=31[0m
+[0;32mI (358456) wake_word: Microphone amplitude: average=8 peak=27[0m
+[0;32mI (360506) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (362546) wake_word: Microphone amplitude: average=8 peak=22[0m
+[0;32mI (364596) wake_word: Microphone amplitude: average=8 peak=34[0m
+[0;32mI (366636) wake_word: Microphone amplitude: average=8 peak=31[0m
+[0;32mI (368686) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (370736) wake_word: Microphone amplitude: average=6 peak=15[0m
+[0;32mI (372776) wake_word: Microphone amplitude: average=7 peak=40[0m
+[0;32mI (374826) wake_word: Microphone amplitude: average=8 peak=27[0m
+[0;32mI (376876) wake_word: Microphone amplitude: average=7 peak=27[0m
+[0;32mI (378916) wake_word: Microphone amplitude: average=7 peak=20[0m
+[0;32mI (380966) wake_word: Microphone amplitude: average=6 peak=20[0m
+[0;32mI (383006) wake_word: Microphone amplitude: average=7 peak=24[0m
+[0;32mI (385056) wake_word: Microphone amplitude: average=8 peak=19[0m
+[0;32mI (387106) wake_word: Microphone amplitude: average=8 peak=16[0m
+[0;32mI (389146) wake_word: Microphone amplitude: average=9 peak=29[0m
+[0;32mI (391196) wake_word: Microphone amplitude: average=7 peak=22[0m
+[0;32mI (393236) wake_word: Microphone amplitude: average=8 peak=16[0m
+[0;32mI (395286) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (397336) wake_word: Microphone amplitude: average=7 peak=15[0m
+[0;32mI (399376) wake_word: Microphone amplitude: average=6 peak=15[0m
+[0;32mI (401426) wake_word: Microphone amplitude: average=7 peak=19[0m
+[0;32mI (403466) wake_word: Microphone amplitude: average=6 peak=10[0m
+[0;32mI (405516) wake_word: Microphone amplitude: average=7 peak=18[0m
+[0;32mI (407566) wake_word: Microphone amplitude: average=7 peak=21[0m
+[0;32mI (409666) wake_word: Microphone amplitude: average=9 peak=36[0m
+[0;32mI (411716) wake_word: Microphone amplitude: average=17 peak=115[0m
+[0;32mI (413766) wake_word: Microphone amplitude: average=7 peak=21[0m
+[0;32mI (415806) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (417856) wake_word: Microphone amplitude: average=7 peak=16[0m
+[0;32mI (419896) wake_word: Microphone amplitude: average=6 peak=12[0m
+[0;32mI (421946) wake_word: Microphone amplitude: average=7 peak=19[0m
+[0;32mI (423996) wake_word: Microphone amplitude: average=9 peak=27[0m
+[0;32mI (426036) wake_word: Microphone amplitude: average=12 peak=65[0m

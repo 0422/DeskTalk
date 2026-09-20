@@ -50,10 +50,16 @@ bool speaker_is_ready();
 esp_err_t read_audio_bytes(void *data, size_t length, size_t *bytes_read, uint32_t timeout_ms);
 void record(int16_t *data, size_t length = DMA_BUF_LEN);
 void enhanceVoice(int16_t *data, size_t length = DMA_BUF_LEN);
-void play(const int16_t *data, size_t length = DMA_BUF_LEN, float volume_ratio = 1.0);
+// void play(const int16_t *data, size_t length = DMA_BUF_LEN, float volume_ratio = 1.0);
+// 2026-09-18: Report every I2S write failure to the TTS playback task instead
+// of logging an error and incorrectly treating a partial phrase as complete.
+bool play(const int16_t *data, size_t length = DMA_BUF_LEN, float volume_ratio = 1.0);
 // Wait until samples already copied into the TX DMA buffers have reached the
 // speaker before muting the amplifier.
-void wait_for_playback_complete();
+// void wait_for_playback_complete();
+// 2026-09-18: Return the DMA drain result so a cut-off tail is never reported
+// as successful playback.
+bool wait_for_playback_complete();
 // Play a short 1 kHz tone through the MAX98357 without involving WiFi or TTS.
 void test_speaker();
 void stop_play();

@@ -7,7 +7,10 @@ namespace {
 // 2026-09-17: Keep the trace bounded so timestamp collection never allocates memory or writes to Serial on the critical path.
 // constexpr size_t kLatencyEventCount = 6;
 // 2026-09-18: Include detailed LLM completion and TTS connection/request milestones.
-constexpr size_t kLatencyEventCount = 9;
+// constexpr size_t kLatencyEventCount = 9;
+// 2026-09-18: Add the local speech-end decision to the existing nine-stage
+// trace without allocating or printing on the measured path.
+constexpr size_t kLatencyEventCount = 10;
 
 struct LatencyEntry {
   LatencyEvent event;
@@ -24,6 +27,8 @@ const char *latencyEventName(LatencyEvent event) {
   switch (event) {
     case LatencyEvent::VAD_START:
       return "VAD_START";
+    case LatencyEvent::VAD_END:
+      return "VAD_END";
     case LatencyEvent::AUDIO_UPLOAD_DONE:
       return "AUDIO_UPLOAD_DONE";
     case LatencyEvent::ASR_FINAL:

@@ -3,6 +3,12 @@
 
 固件默认仍走板端直连 DeepSeek/火山 TTS。启用网关后，ESP32-S3 的 ASR 仍按原路径运行；ASR 完成后，网关接收 DeepSeek SSE 增量 JSON，等到 `answer` 出现一段足够长的自然断句就启动火山 TTS，不必等全文和 `actions` 完成。音频用 8 kHz、16-bit、单声道 PCM 经 WebSocket 送回板端。首次短句之后，剩余内容用第二个 TTS 请求补全；短回答可能仅用一次请求。
 
+<!-- 2026-09-18: Document the startup warmup and cross-turn connection reuse added for first-audio latency. -->
+网关启动时会预热 DeepSeek 的 DNS/TCP/TLS，并建立火山 V3 双向 TTS 连接；随后跨轮复用 DeepSeek HTTP 会话和火山物理连接。ESP32 到网关的局域网 WebSocket 也在固件启动阶段建立并保持。首段达到 7 个字符后遇到逗号、冒号或句末标点即可触发一个 TTS Session，`对呀，`等过短片段不会单独合成。
+
+<!-- 2026-09-18: Clarify the stateless prompt boundary so transport warmup is not mistaken for server-side conversation storage. -->
+DeepSeek Chat Completions 是无状态接口：系统提示词、最近三轮历史和当前问题仍需在每轮请求中完整发送。启动预热只能提前完成网络连接，不能把 prompt 永久注册到 DeepSeek；相同前缀是否命中服务端上下文缓存由 DeepSeek 自动决定。
+
 <!-- 2026-09-18: Make the early-playback validation tradeoff explicit before enabling the optional gateway. -->
 首句会在完整 JSON 校验前播放；若后续 SSE 或 TTS 中断，已播音频不会重播，剩余内容可能无法念完。连接在任何 PCM 到达前失败时，板端可回退到原直连路径。
 

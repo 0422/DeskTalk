@@ -1,2 +1,0 @@
-# 2026-09-11: Use PowerShell for the ESP-SR model copy because Windows COPY treats the forward slash in compiler.sdk.path as an invalid switch in Arduino ESP32 Core 3.0.0.
-recipe.hooks.objcopy.postobjcopy.2.pattern.windows=powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath '{build.path}\libraries\ESP_SR') { Copy-Item -LiteralPath '{compiler.sdk.path}\esp_sr\srmodels.bin' -Destination '{build.path}\srmodels.bin' -Force }"

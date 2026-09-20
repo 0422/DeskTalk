@@ -115,7 +115,7 @@ bool read_i32_be(const uint8_t *data, size_t length, size_t &offset,
 }
 
 String make_auth_headers(const char *resource_id, const String &request_id,
-                         bool text_to_speech) {
+                         bool text_to_speech, bool use_connect_id) {
   String headers;
   if (strlen(VOLC_API_KEY) > 0) {
     headers = "X-Api-Key: " + String(VOLC_API_KEY) + "\r\n";
@@ -125,7 +125,12 @@ String make_auth_headers(const char *resource_id, const String &request_id,
     headers += "X-Api-Access-Key: " + String(TOKEN) + "\r\n";
   }
   headers += "X-Api-Resource-Id: " + String(resource_id) + "\r\n";
-  headers += text_to_speech ? "X-Api-Request-Id: " : "X-Api-Connect-Id: ";
+  // 2026-09-18: Bidirectional TTS identifies the physical WebSocket with a
+  // connection ID; the legacy unidirectional request keeps its request ID.
+  // headers += text_to_speech ? "X-Api-Request-Id: "
+  //                           : "X-Api-Connect-Id: ";
+  headers += (!text_to_speech || use_connect_id) ? "X-Api-Connect-Id: "
+                                                 : "X-Api-Request-Id: ";
   // WebSocketsClient appends the final CRLF when inserting extra headers.
   // Returning one here would terminate the HTTP header block too early.
   headers += request_id;

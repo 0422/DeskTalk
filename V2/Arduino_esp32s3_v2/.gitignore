@@ -1,5 +1,0 @@
-*.py
-.cursorrules
-build/
-.vscode/
-secrets.h

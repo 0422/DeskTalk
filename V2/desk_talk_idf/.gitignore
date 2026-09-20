@@ -1,0 +1,7 @@
+# 2026-09-19: Exclude ESP-IDF generated output and local credentials from version control.
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+main/secrets.h

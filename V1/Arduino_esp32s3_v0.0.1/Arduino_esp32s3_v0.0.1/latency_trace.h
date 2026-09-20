@@ -6,6 +6,9 @@
 // 2026-09-17: Define the six serial-only baseline events used to compare conversation latency without a logic analyzer.
 enum class LatencyEvent : uint8_t {
   VAD_START,
+  // 2026-09-18: Separate the configured silence endpoint from cloud ASR
+  // finalization so post-speech response latency can be read directly.
+  VAD_END,
   AUDIO_UPLOAD_DONE,
   ASR_FINAL,
   LLM_FIRST_BYTE,
