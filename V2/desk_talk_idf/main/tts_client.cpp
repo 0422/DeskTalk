@@ -53,6 +53,8 @@ constexpr int32_t kSessionFailed = 153;
 constexpr int32_t kTaskRequest = 200;
 constexpr size_t kSentenceQueueDepth = 24;
 constexpr size_t kPcmQueueDepth = 48;
+// 2026-09-22: Absorb brief TTS-worker scheduling gaps without failing the active LLM stream immediately.
+constexpr uint32_t kSentenceQueueWaitMs = 100;
 constexpr uint32_t kConnectTimeoutMs = 8000;
 constexpr uint32_t kProtocolTimeoutMs = 6000;
 constexpr uint32_t kSessionTimeoutMs = 60000;
@@ -156,7 +158,8 @@ bool TtsClient::enqueue_sentence(const std::string &sentence) {
   char *copy = copy_to_psram(sentence);
   if (copy == nullptr) return false;
   const SentenceItem item{copy, false};
-  if (xQueueSend(sentence_queue_, &item, 0) != pdTRUE) {
+  if (xQueueSend(sentence_queue_, &item,
+                 pdMS_TO_TICKS(kSentenceQueueWaitMs)) != pdTRUE) {
     heap_caps_free(copy);
     ESP_LOGE(kLogTag, "Sentence queue is full");
     turn_failed_ = true;
@@ -191,7 +194,13 @@ bool TtsClient::finish_turn(uint32_t timeout_ms) {
 bool TtsClient::last_turn_had_audio() const { return turn_audio_bytes_ > 0; }
 
 bool TtsClient::connect() {
-  if (persistent_connection_ready()) return true;
+  if (persistent_connection_ready()) {
+    // 2026-09-22: Record reuse on follow-up turns so latency traces distinguish a warm socket from a new handshake.
+    diagnostics::latency_trace_mark(
+        diagnostics::LatencyEvent::kTtsConnected);
+    ESP_LOGI(kLogTag, "Persistent bidirectional connection reused");
+    return true;
+  }
   if (xSemaphoreTake(connection_mutex_, pdMS_TO_TICKS(kConnectTimeoutMs)) !=
       pdTRUE) {
     return false;
@@ -212,6 +221,11 @@ bool TtsClient::connect() {
   configuration.disable_auto_reconnect = true;
   configuration.network_timeout_ms = kConnectTimeoutMs;
   configuration.crt_bundle_attach = esp_crt_bundle_attach;
+  // 2026-09-22: Keep the prebuilt TTS socket alive across short follow-up gaps instead of forcing another TLS handshake.
+  configuration.keep_alive_enable = true;
+  configuration.keep_alive_idle = 15;
+  configuration.keep_alive_interval = 5;
+  configuration.keep_alive_count = 3;
   // 2026-09-20: Match ASR's client frame capacity for streamed PCM; the temporary transport handshake buffer is configured globally.
   configuration.buffer_size = 4096;
   diagnostics::log_memory_snapshot("TTS before-connect");

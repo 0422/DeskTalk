@@ -3,7 +3,7 @@
 一个基于 ESP32-S3 的桌面智能语音助手机器人，支持本地唤醒词、云端 ASR/LLM/TTS 全链路对话、表情与舵机动作交互。
 
 > V1基于 [uncle-mark/desk-emoji](https://github.com/uncle-mark/desk-emoji) 项目修改，感谢原作者的开源贡献。
-> 在 V1基础上进行了 ESP-IDF 迁移和功能扩展（V2,V3）。
+> 在 V1基础上进行了 ESP-IDF 迁移和功能扩展（V2,V3），以及模块STEP文件和底板图纸等。
 
 ## ✨ 特性
 
@@ -52,6 +52,18 @@ cp main/secrets.example.h main/secrets.h
 ```bash
 idf.py build
 idf.py -p COM4 app-flash monitor
+
+-----------------------
+保存完整日志
+在 VS Code IDF 终端执行：
+idf.py -p COM4 monitor 2>&1 | Tee-Object -FilePath .\monitor-20260922.log
+之后可筛选：
+rg -n "LAT_SUMMARY|LAT_STAGE|ASR failed|No speech" .\monitor-20260922.log
+也可将 .vscode/settings.json 手动改为：
+{
+	"idf.monitorPort": "COM4",
+	"terminal.integrated.scrollback": 100000
+}
 ```
 
 详细烧录流程见 [烧录说明](3-开发流程/烧录说明.md)。
@@ -88,7 +100,7 @@ docs/
 ├── 1-固件文档/              # 固件版本文档
 │   ├── README.md
 │   ├── V1说明.md
-│   ├── V2代码说明.md        # V2/desk_talk_idf 完整代码说明（整合原 V2+V3）
+│   ├── V2说明.md             # V2/desk_talk_idf 完整代码说明（整合原 V2+V3）
 │   ├── V3：端到端并行架构（规划中）.md
 │   └── 双芯片方案.md
 ├── 2-外壳设计/              # 外壳设计

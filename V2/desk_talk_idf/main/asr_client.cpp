@@ -41,11 +41,14 @@ constexpr uint32_t kConnectTimeoutMs = 7000;
 constexpr uint32_t kResponseTimeoutMs = 5000;
 constexpr uint32_t kFinalResponseTimeoutMs = 10000;
 constexpr uint32_t kRecordSeconds = 30;
+// 2026-09-22: Restore the 500 ms endpoint because short-pause validation produced multiple truncated phrases with the 400 ms setting.
 constexpr uint32_t kSilenceTimeoutMs = 500;
+// 2026-09-22: Keep the shorter endpoint available for a later controlled comparison after speech-boundary quality is stable.
+// constexpr uint32_t kSilenceTimeoutMs = 400;
 constexpr uint32_t kStartSpeechTimeoutSeconds = 15;
 // 2026-09-20: Preserve the former 200 ms block setting for comparison with the latency baseline.
 // constexpr size_t kAudioBlockSamples = hardware::kAudioSampleRate / 5;
-// 2026-09-20: Process and upload 100 ms blocks to check speech ending more frequently while retaining the 500 ms silence threshold.
+// 2026-09-22: Keep 100 ms blocks so the 500 ms endpoint remains observable with bounded block-read granularity.
 constexpr size_t kAudioBlockSamples = hardware::kAudioSampleRate / 10;
 
 int64_t milliseconds() { return esp_timer_get_time() / 1000; }

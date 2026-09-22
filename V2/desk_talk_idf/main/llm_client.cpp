@@ -137,7 +137,10 @@ class SentenceSegmenter {
             static_cast<unsigned char>(pending_[cursor]));
         if (cursor + width > pending_.size()) break;
         ++points;
-        if ((points >= 10 && hard_boundary(pending_, cursor)) ||
+        // 2026-09-22: Send any explicit sentence terminator immediately so short replies do not wait for the complete LLM stream.
+        // if ((points >= 10 && hard_boundary(pending_, cursor)) ||
+        //     (points >= 28 && soft_boundary(pending_, cursor))) {
+        if (hard_boundary(pending_, cursor) ||
             (points >= 28 && soft_boundary(pending_, cursor))) {
           boundary = cursor + width;
           break;
