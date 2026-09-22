@@ -9,3 +9,6 @@ backup/
 *.spec
 *.zip
 Pipfile*
+# 2026-09-22: 兜底忽略各工程的私密配置文件（LLM/火山引擎/WiFi 密钥），防止新工程漏配局部 .gitignore 时泄漏
+secrets.h
+*.env
