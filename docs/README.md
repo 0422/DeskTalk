@@ -110,7 +110,8 @@ docs/
 
 ## 📄 许可
 
-（待补充项目许可证）
+本项目继承上游项目 [uncle-mark/desk-emoji](https://github.com/uncle-mark/desk-emoji) 的 **GPL-3.0** 许可证（见仓库根目录 [LICENSE](../LICENSE)）。
+作为其衍生作品，本项目的修改与扩展部分同样以 GPL-3.0 发布。
 
 ---
 
